@@ -43,7 +43,7 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
     await act(async()=>setting.querySelector<HTMLButtonElement>('button[aria-expanded]')!.click())
     expect(setting.querySelector(`[role="radiogroup"][aria-label="${label}"]`)).toBeTruthy()
    }
-   expect(host.querySelector('section[aria-label="Teammate instructions"]')?.textContent).toContain('Answer theme questions.')
+   expect(host.querySelector('section[aria-label="Limits when teammates ask"]')?.textContent).toContain('Answer theme questions.')
    await act(async()=>[...host.querySelectorAll('button')].find(button=>button.textContent==='✦ Ask AI to explain')!.click())
    expect(fillOwnTabDraft).toHaveBeenLastCalledWith('exact-own-agent','Explain these saved choices, and offer changes.')
    await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Who can ask"] [role="radio"]:last-child')!.click())
@@ -52,8 +52,8 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
    await act(async () => host.querySelector<HTMLButtonElement>('[role="radiogroup"][aria-label="Share with the team"] [role="radio"]:last-child')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({project:'crew',connection:undefined},'/agent-rule','POST',{agent_key:'agent-1',share:'full_chat'})
    await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Edit')!.click())
-   expect(host.querySelector('textarea[aria-label="Your instructions for teammates"]')).not.toBeNull()
-   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save note')!.click())
+   expect(host.querySelector('textarea[aria-label="Limits when teammates ask"]')).not.toBeNull()
+   await act(async () => [...host.querySelectorAll('button')].find(button => button.textContent === 'Save')!.click())
    expect(teamRequest).toHaveBeenLastCalledWith({ project:'crew', connection:undefined }, '/agent-rule', 'POST', { agent_key:'agent-1', when_others_ask:'Answer theme questions.' })
   }
   await act(async () => root.render(<ShareAgentCard agent={{...agent,ask:{...agent.ask,can_change:false,fixed:'Keep one shared'}}} target={{project:'crew'}} projectId="crew" compact />))

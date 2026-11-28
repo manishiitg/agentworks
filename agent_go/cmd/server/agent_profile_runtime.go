@@ -600,14 +600,18 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		identityKey = productVars["WORK_IDENTITY_KEY"]
 	}
 	mark("prompt_vars")
-	// When others ask (owner, 5 Nov): another person's ask of this agent gets a note for this turn only.
-	promptContext.OthersAsking = ""
+	// When others ask (owner, 5 Nov): another person's ask of this agent gets a note for this turn only. It goes at the
+	// start of the person's message, not the system prompt, so the cached prompt stays the same (owner, 28 Nov).
+	othersAsking := ""
 	if isProjectProfileID(profile.ID) {
 		agentOwner := userID
 		if !crewOwned {
 			agentOwner = firstNonEmptyTrimmed(ownerOfCrewProjectID(crewResourceProjectID(req.AgentProfileConversationKey)), resolveProjectOwner(ctx, crewRoot))
 		}
-		promptContext.OthersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey), sessionID)
+		othersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey), sessionID)
+		if othersAsking != "" {
+			req.Query = othersAsking + "\n\n" + req.Query
+		}
 
 	}
 	if err := applyWorkspaceMemoryFeature(&profile); err != nil {
@@ -629,7 +633,7 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 		rendered += agentRole
 		identityKey += agentRole
 		// The owner's own turn reads a Team-settings change made since its last one (crew_team_agent_notice.go).
-		if promptContext.OthersAsking == "" {
+		if othersAsking == "" {
 			if line := takeCrewTeamAgentNotice(sessionID); line != "" {
 				rendered += "\n\n[" + line + "]"
 			}

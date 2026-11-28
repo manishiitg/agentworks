@@ -585,11 +585,11 @@ export function AgentDetails({ agent, target, projectId, showNote = true }: { ag
     <p className={label}>{agent.can_edit_rule ? 'When someone else asks' : 'When you ask it'}</p>
     <p className="rounded-md bg-muted/60 px-2.5 py-2 text-[12.5px] text-muted-foreground">{agent.when_others_line}</p>
     {showNote && agent.can_edit_rule && <>
-      <p className={`${label} flex items-center gap-1.5`}>Your rule (optional)<Saving on={pending === 'rule'}>{null}</Saving></p>
-      <textarea aria-label={`${agent.name}: your rule when others ask`} value={rule} maxLength={1000} disabled={Boolean(pending)} placeholder="e.g. tester-b may see the website files; everyone else gets answers only."
+      <p className={`${label} flex items-center gap-1.5`}>Limits when teammates ask (optional)<Saving on={pending === 'rule'}>{null}</Saving></p>
+      <textarea aria-label={`${agent.name}: limits when teammates ask`} value={rule} maxLength={1000} disabled={Boolean(pending)} placeholder="e.g. Answer questions only. Don't change files, push code, spend money or message anyone without asking me first."
         onChange={e => setRule(e.target.value)} onBlur={() => { if (rule.trim() !== (agent.when_others_ask || '')) void save('rule', { when_others_ask: rule }) }}
         className="min-h-[58px] w-full rounded-md border border-border bg-background px-2 py-1.5 text-[13px]" />
-      <p className="mt-1 text-xs text-muted-foreground">Added only when someone else asks; the agent knows who is asking. It follows it; it isn't a lock.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Your agent follows this when a teammate asks. It's an instruction, not a lock: their requests still run with your files, tools and sign-ins.</p>
     </>}
     {error && <p role="alert" className="mt-1 text-xs text-destructive">{error}</p>}
   </div>

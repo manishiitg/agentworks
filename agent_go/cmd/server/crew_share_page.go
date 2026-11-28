@@ -816,7 +816,7 @@ func crewShareAgentSummary(teamOn bool, a crewTeamTabAgent) string {
 	line := who + " can ask " + a.Name + ". "
 	// No default limits (owner, 22 Nov): it helps them as it helps you; the owner's written rule is the only layer.
 	if strings.TrimSpace(a.WhenOthersAsk) != "" {
-		line += "It helps them as it helps you, following your rule when others ask. "
+		line += "It helps them as it helps you, following your limits when teammates ask. "
 	} else {
 		line += "It helps them as it helps you, using your files, tools and signed-in apps, personal ones included. "
 	}
