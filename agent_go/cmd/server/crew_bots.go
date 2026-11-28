@@ -148,6 +148,8 @@ type crewBotView struct {
 	MakerName    string            `json:"maker_name"`
 	Mine         bool              `json:"mine,omitempty"`
 	Functions    []crewBotFunction `json:"functions"`
+	// InProjects are the caller's own projects this bot was added to.
+	InProjects []crewBotProject `json:"in_projects,omitempty"`
 	// Audience is shown to the maker only.
 	Everyone bool     `json:"everyone,omitempty"`
 	People   []string `json:"people,omitempty"`
@@ -179,26 +181,20 @@ func crewBotsFor(ctx context.Context, caller string) []crewBotView {
 		return nil
 	}
 	out := []crewBotView{}
+	targets := crewBotAddTargetsFrom(records, caller)
 	for _, rec := range records {
 		if len(rec.Bots) == 0 || !isProjectProfileID(rec.Product) {
 			continue
 		}
-		root := crewBotRoot(rec)
-		_, title := crewOwnerAndTitle(rec.ProjectID)
 		for _, key := range crewBotKeys(rec) {
-			if !crewBotAdmits(rec, key, caller) {
-				continue
+			if view, ok := crewBotViewFor(ctx, rec, key, caller); ok {
+				for _, target := range targets {
+					if target.ProjectID != rec.ProjectID && containsID(target.added, key) {
+						view.InProjects = append(view.InProjects, target)
+					}
+				}
+				out = append(out, view)
 			}
-			tab, found := crewBotAgent(ctx, rec, key)
-			if !found {
-				continue
-			}
-			bot := rec.Bots[key]
-			view := crewBotView{ID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent"), Purpose: tab.Identity.Purpose, Icon: bot.Icon, ProjectID: rec.ProjectID, ProjectTitle: firstNonEmptyTrimmed(title, rec.Folder), Workspace: root, MakerName: crewOwnerDisplayName(bot.Maker), Mine: bot.Maker == caller, Functions: crewBotFunctionsFor(ctx, rec, root, bot)}
-			if view.Mine {
-				view.Everyone, view.People, view.Teams = bot.Everyone, bot.People, bot.Teams
-			}
-			out = append(out, view)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -208,6 +204,147 @@ func crewBotsFor(ctx context.Context, caller string) []crewBotView {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
 	return out
+}
+
+// crewBotViewFor is the bot at key as caller sees it, when it admits them and its agent still exists.
+func crewBotViewFor(ctx context.Context, rec projectOwnerRecord, key, caller string) (crewBotView, bool) {
+	if !crewBotAdmits(rec, key, caller) {
+		return crewBotView{}, false
+	}
+	tab, found := crewBotAgent(ctx, rec, key)
+	if !found {
+		return crewBotView{}, false
+	}
+	root := crewBotRoot(rec)
+	_, title := crewOwnerAndTitle(rec.ProjectID)
+	bot := rec.Bots[key]
+	view := crewBotView{ID: key, Name: firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Agent"), Purpose: tab.Identity.Purpose, Icon: bot.Icon, ProjectID: rec.ProjectID, ProjectTitle: firstNonEmptyTrimmed(title, rec.Folder), Workspace: root, MakerName: crewOwnerDisplayName(bot.Maker), Mine: bot.Maker == caller, Functions: crewBotFunctionsFor(ctx, rec, root, bot)}
+	if view.Mine {
+		view.Everyone, view.People, view.Teams = bot.Everyone, bot.People, bot.Teams
+	}
+	return view, true
+}
+
+// crewBotProject is one of the caller's projects on the server that a bot can be added to.
+type crewBotProject struct {
+	ProjectID string `json:"project_id"`
+	Title     string `json:"title"`
+	added     []string
+}
+
+// crewBotAddTargetsFrom are the projects on the server the caller builds (owner or co-owner): where they may add a bot.
+func crewBotAddTargetsFrom(records map[string]projectOwnerRecord, caller string) []crewBotProject {
+	out := []crewBotProject{}
+	for _, rec := range records {
+		if !isProjectProfileID(rec.Product) || rec.ProjectID == "" || (rec.OwnerID != caller && !containsID(rec.CoOwners, caller)) || !crewLivesOnServer(rec.ProjectID) {
+			continue
+		}
+		_, title := crewOwnerAndTitle(rec.ProjectID)
+		out = append(out, crewBotProject{ProjectID: rec.ProjectID, Title: firstNonEmptyTrimmed(title, rec.Folder), added: rec.AddedBots})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return strings.ToLower(out[i].Title) < strings.ToLower(out[j].Title) })
+	return out
+}
+
+func crewBotAddTargets(caller string) []crewBotProject {
+	records, err := defaultProjectOwners().All()
+	if err != nil {
+		return nil
+	}
+	return crewBotAddTargetsFrom(records, caller)
+}
+
+// crewBotRecordByID is the project record that holds the bot with this id (its key starts with the project id).
+func crewBotRecordByID(bot string) (projectOwnerRecord, bool) {
+	projectID, _, found := strings.Cut(bot, codeChatSideMarker)
+	if !found {
+		return projectOwnerRecord{}, false
+	}
+	rec, ok := crewOwnerRecordAt(crewProjectRootByID(projectID))
+	if !ok {
+		return projectOwnerRecord{}, false
+	}
+	_, isBot := rec.Bots[bot]
+	return rec, isBot
+}
+
+// crewProjectBots are the bots added to a project, as caller may use them; unavailable are the ids of those that no
+// longer admit them (stopped, or no longer shared with them), so the project can say so and take them out.
+func crewProjectBots(ctx context.Context, caller, projectID string) ([]crewBotView, []string, error) {
+	rec, ok := crewOwnerRecordAt(crewProjectRootByID(projectID))
+	if !ok {
+		return nil, nil, fmt.Errorf("Project not found.")
+	}
+	if caller != rec.OwnerID && !containsID(rec.CoOwners, caller) && !crewIsProjectUser(crewBotRoot(rec), caller) {
+		return nil, nil, fmt.Errorf("Only people who work in this project see its bots.")
+	}
+	out, unavailable := []crewBotView{}, []string{}
+	for _, bot := range rec.AddedBots {
+		source, found := crewBotRecordByID(bot)
+		view, admitted := crewBotView{}, false
+		if found {
+			view, admitted = crewBotViewFor(ctx, source, bot, caller)
+		}
+		if !admitted {
+			unavailable = append(unavailable, bot)
+			continue
+		}
+		out = append(out, view)
+	}
+	return out, unavailable, nil
+}
+
+// setCrewProjectBot adds a bot to one of the caller's projects, or takes it out.
+func setCrewProjectBot(caller, projectID, bot string, add bool) error {
+	root := crewProjectRootByID(projectID)
+	rec, ok := crewOwnerRecordAt(root)
+	if !ok || !crewLivesOnServer(rec.ProjectID) {
+		return fmt.Errorf("Bots can be added to projects on the server.")
+	}
+	if caller != rec.OwnerID && !containsID(rec.CoOwners, caller) {
+		return fmt.Errorf("Only the project's owner or a co-owner adds bots to it.")
+	}
+	if add {
+		source, found := crewBotRecordByID(bot)
+		if !found || !crewBotAdmits(source, bot, caller) {
+			return fmt.Errorf("This bot is not shared with you.")
+		}
+		if source.ProjectID == rec.ProjectID {
+			return fmt.Errorf("This bot is already one of this project's own agents.")
+		}
+	}
+	identity, ok := projectIdentityOf(root)
+	if !ok {
+		return fmt.Errorf("Project unavailable")
+	}
+	err := defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
+		id := projectOwnerKey(identity.Product, identity.Folder)
+		record, exists := projects[id]
+		if !exists {
+			return false, fmt.Errorf("Project unavailable")
+		}
+		has := containsID(record.AddedBots, bot)
+		if has == add {
+			return false, nil
+		}
+		next := slices.DeleteFunc(slices.Clone(record.AddedBots), func(b string) bool { return b == bot })
+		if add {
+			if len(next) >= 50 {
+				return false, fmt.Errorf("A project can have at most 50 bots.")
+			}
+			next = append(next, bot)
+		}
+		if len(next) == 0 {
+			next = nil
+		}
+		record.AddedBots = next
+		projects[id] = record
+		return true, nil
+	})
+	if err == nil {
+		log.Printf("[CREW_BOT] actor=%s project=%s bot=%s action=%s", caller, projectID, bot, map[bool]string{true: "add_to_project", false: "remove_from_project"}[add])
+	}
+	return err
 }
 
 // crewBotChange is the maker's edit of one agent's bot. Nil fields keep what is saved.
@@ -448,6 +585,8 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 // GET  /api/bots/agent?workspace=&agent=  the maker's card for one agent
 // PUT  /api/bots/agent                    save the maker's change
 // POST /api/bots/call                     run one of a bot's buttons
+// GET  /api/bots/project?project_id=      the bots added to a project
+// POST /api/bots/project                  add a bot to my project, or take it out
 func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if IsLocalMode() && !IsMultiUserMode() {
@@ -463,7 +602,36 @@ func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) 
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	switch {
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots"):
-		externalJSON(w, map[string]any{"bots": crewBotsFor(r.Context(), caller)})
+		externalJSON(w, map[string]any{"bots": crewBotsFor(r.Context(), caller), "add_targets": crewBotAddTargets(caller)})
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots/project"):
+		bots, unavailable, err := crewProjectBots(r.Context(), caller, r.URL.Query().Get("project_id"))
+		if err != nil {
+			externalError(w, 403, "not_allowed", err.Error())
+			return
+		}
+		externalJSON(w, map[string]any{"bots": bots, "unavailable": unavailable})
+	case r.Method == http.MethodPost && strings.HasSuffix(path, "/bots/project"):
+		var body struct {
+			ProjectID string `json:"project_id"`
+			Bot       string `json:"bot"`
+			Add       bool   `json:"add"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&body) != nil || decoder.Decode(new(any)) != io.EOF {
+			externalError(w, 400, "invalid_arguments", "invalid request")
+			return
+		}
+		if !userAccessForClaims(claims).CanEdit {
+			externalError(w, 403, "not_allowed", "Your account cannot change projects.")
+			return
+		}
+		if err := setCrewProjectBot(caller, strings.TrimSpace(body.ProjectID), strings.TrimSpace(body.Bot), body.Add); err != nil {
+			externalError(w, 400, "bot_refused", err.Error())
+			return
+		}
+		bots, unavailable, _ := crewProjectBots(r.Context(), caller, body.ProjectID)
+		externalJSON(w, map[string]any{"bots": bots, "unavailable": unavailable})
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots/agent"):
 		state, err := crewBotState(r.Context(), caller, r.URL.Query().Get("workspace"), r.URL.Query().Get("agent"))
 		if err != nil {
@@ -512,15 +680,15 @@ const externalBotsTool = "bots"
 
 func externalBotsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and buttons; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read its answer with messages action=read and the inbox_id. call (bot, function, input): press one of its buttons, a project function; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions shown as its buttons. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
-		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "call", "get", "set"}},
-		"bot":           externalString("ask, call: the bot's id from list."),
+	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and buttons; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read its answer with messages action=read and the inbox_id. call (bot, function, input): press one of its buttons, a project function; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions shown as its buttons. add / remove (crew_id, bot): put a bot shared with you into one of your projects on the server (owner or co-owner), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
+		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "call", "get", "set", "add", "remove"}},
+		"bot":           externalString("ask, call, add, remove: the bot's id from list."),
 		"message":       externalString("ask: your message."),
 		"inbox_id":      externalString("ask: the inbox from an earlier ask, to continue it."),
 		"function":      externalString("call: the button's name from list."),
 		"input":         map[string]any{"type": "object", "description": "call: the function's input."},
 		"submission_id": externalString("ask, call: optional retry key."),
-		"crew_id":       externalString("get, set: the project's id."),
+		"crew_id":       externalString("get, set, add, remove: the project's id; with list, also that project's bots."),
 		"agent":         externalString("get, set: your agent in that project, by name or chat id."),
 		"on":            map[string]any{"type": "boolean", "description": "set: true makes it a bot, false stops it."},
 		"icon":          externalString("set: one emoji."),
@@ -570,7 +738,24 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 	token := claims.AccessToken
 	switch str("action") {
 	case "list":
-		externalJSON(w, map[string]any{"bots": crewBotsFor(r.Context(), caller)})
+		out := map[string]any{"bots": crewBotsFor(r.Context(), caller)}
+		if projectID := str("crew_id"); projectID != "" {
+			if bots, unavailable, err := crewProjectBots(r.Context(), caller, projectID); err == nil {
+				out["project_bots"], out["project_bots_unavailable"] = bots, unavailable
+			}
+		}
+		externalJSON(w, out)
+	case "add", "remove":
+		if (token != nil && !token.Allows("crews:write")) || !userAccessForClaims(claims).CanEdit {
+			externalError(w, 403, "insufficient_scope", "Adding a bot to a project needs a connection that may change projects.")
+			return
+		}
+		if err := setCrewProjectBot(caller, str("crew_id"), str("bot"), str("action") == "add"); err != nil {
+			externalError(w, 400, "bot_refused", err.Error())
+			return
+		}
+		bots, unavailable, _ := crewProjectBots(r.Context(), caller, str("crew_id"))
+		externalJSON(w, map[string]any{"project_bots": bots, "unavailable": unavailable})
 	case "ask":
 		if token != nil && !token.Allows("crews:run") {
 			externalError(w, 403, "insufficient_scope", "Asking a bot needs a connection that may run projects.")
@@ -647,7 +832,7 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 		}
 		externalJSON(w, state)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be list, ask, call, get or set.")
+		externalError(w, 400, "invalid_arguments", "action must be list, ask, call, get, set, add or remove.")
 	}
 }
 

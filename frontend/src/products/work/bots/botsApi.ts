@@ -11,7 +11,16 @@ export type Bot = {
   project_id: string; project_title: string; workspace: string; maker_name: string
   mine?: boolean; functions: BotFunction[]
   everyone?: boolean; people?: string[]; teams?: string[]
+  /** Your own projects it was added to. */
+  in_projects?: BotProject[]
 }
+
+/** One of your projects on the server (owner or co-owner): where you can add a bot. */
+export type BotProject = { project_id: string; title: string }
+
+/** Bots changed (made, added or removed): the Bots page, agent list and right menu read them again. */
+export const BOTS_CHANGED_EVENT = 'agentworks:bots-changed'
+export const botsChanged = () => window.dispatchEvent(new Event(BOTS_CHANGED_EVENT))
 
 /** The maker's card for one of their agents (GET /api/bots/agent). */
 export type BotState = {
@@ -22,9 +31,23 @@ export type BotState = {
 
 export type BotChange = Partial<{ on: boolean; icon: string; name: string; purpose: string; everyone: boolean; people: string[]; teams: string[]; functions: string[] }>
 
-export async function listBots(): Promise<Bot[]> {
-  const { data } = await api.get<{ bots?: Bot[] }>('/api/bots')
-  return data.bots ?? []
+export async function listBots(): Promise<{ bots: Bot[]; addTargets: BotProject[] }> {
+  const { data } = await api.get<{ bots?: Bot[]; add_targets?: BotProject[] }>('/api/bots')
+  return { bots: data.bots ?? [], addTargets: data.add_targets ?? [] }
+}
+
+export type ProjectBots = { bots: Bot[]; /** Ids of added bots no longer shared with you. */ unavailable: string[] }
+
+/** The bots added to a project, as you may use them; unavailable counts those no longer shared with you. */
+export async function readProjectBots(projectId: string): Promise<ProjectBots> {
+  const { data } = await api.get<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { params: { project_id: projectId } })
+  return { bots: data.bots ?? [], unavailable: data.unavailable ?? [] }
+}
+
+export async function setProjectBot(projectId: string, bot: string, add: boolean): Promise<ProjectBots> {
+  const { data } = await api.post<{ bots?: Bot[]; unavailable?: string[] }>('/api/bots/project', { project_id: projectId, bot, add })
+  botsChanged()
+  return { bots: data.bots ?? [], unavailable: data.unavailable ?? [] }
 }
 
 export async function readBotState(workspace: string, agent: string): Promise<BotState> {
@@ -34,6 +57,7 @@ export async function readBotState(workspace: string, agent: string): Promise<Bo
 
 export async function saveBot(workspace: string, agent: string, change: BotChange): Promise<BotState> {
   const { data } = await api.put<BotState>('/api/bots/agent', { workspace, agent, ...change }, { connection: folderConnection(workspace) })
+  botsChanged()
   return data
 }
 

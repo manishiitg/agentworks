@@ -1,4 +1,5 @@
 import { isLocalDeployment } from '../../products/productSurfaceConfig'
+import { ProjectBotRows } from '../../products/work/bots/ProjectBotRows'
 import { OwnTerminalAgents } from '../../products/work/OwnTerminalAgents'
 import { Fragment, useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { ChevronRight, MoreHorizontal, Search, X } from 'lucide-react'
@@ -379,6 +380,8 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
     {naming?.kind === 'new' && nameBox('New group name', draft => edit({ op: 'new', key: naming.key, name: draft }))}
     {top.map(({ id, value }) => <Fragment key={id}>{between(id)}{typeof value === 'string' ? groupBlock(value) : tree(value)}</Fragment>)}
     {between(null)}
+    {/* Other projects' bots added here (#4545). */}
+    <ProjectBotRows projectId={projectId} />
     {draggedGrouped && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'out' ? 'border-primary bg-primary/10' : 'border-border'}`}
       {...dropZone('out', key => { void edit({ op: 'move', key, group: '' }) })}>Drop here to take it out of the group</div>}
     {draggedParent && <div className={`mx-1 my-1 rounded-md border border-dashed px-2 py-2 text-center text-[11px] text-muted-foreground ${dropOn === 'fork-out' ? 'border-primary bg-primary/10' : 'border-border'}`}
