@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 
 /** Where a bot chat was opened from: the project it was added to (#4545). */
-export type BotChatFrom = { projectId: string; title?: string; /** A project on this Mac. */ mac?: boolean }
+export type BotChatFrom = { projectId: string; title?: string; /** For a server project opened from a Mac: its server's connection. */ server?: string }
 
 /**
  * The Bots page (#4545), over the workspace. Without `chat` it is the company's directory of shared agents (the left
