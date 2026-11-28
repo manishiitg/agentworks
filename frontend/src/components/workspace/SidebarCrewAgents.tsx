@@ -462,7 +462,7 @@ function AgentRow({ agent, status, active, dragging, onDrag, popup, reordering, 
   const nestCheck = dragging && targetKey && dragging !== targetKey && canNest ? canNest(dragging) : { ok: false }
   const canDrop = Boolean(dragging && targetKey && dragging !== targetKey && (actions?.dropHere || nestCheck.ok || nestCheck.reason))
   const hasNestMenu = Boolean(nestTargets?.length && onNestUnder)
-  const hasActions = canMarkUnread || Boolean(groupMenu) || hasNestMenu || Boolean(agent.info?.onRemove) || Boolean(actions && (actions.fork || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
+  const hasActions = canMarkUnread || Boolean(groupMenu) || hasNestMenu || Boolean(agent.info?.onRemove) || Boolean(actions && (actions.fork || actions.forkToProject || actions.rename || actions.moveUp || actions.moveDown || actions.setSidebarHidden))
   const dropClass = !dragging || dragging === targetKey || !dropState.mode ? ''
     : dropState.mode === 'before' ? 'border-t-2 border-primary bg-primary/10'
     : dropState.mode === 'nest' ? 'ring-1 ring-primary bg-primary/10'

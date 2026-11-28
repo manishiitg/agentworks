@@ -1296,7 +1296,7 @@
     "family": "sessions",
     "name": "fork",
     "member": "fork_project_chat",
-    "description": "Fork a caller-owned chat into an independent tab carrying its saved context. Prefer fork for related work. With task, the fork starts on it at once and answers you; place=beside makes it its own agent that does not report back; group puts it in a named group of the person's; purpose and instructions set it up in the same call; without task no turn starts.",
+    "description": "Fork a caller-owned chat into an independent tab carrying its saved context (optionally into another #-tagged project via target_project). Prefer fork for related work. With task, the fork starts on it at once and answers you; place=beside makes it its own agent that does not report back; group puts it in a named group of the person's; purpose and instructions set it up in the same call; without task no turn starts.",
     "external_members": "sessions_fork_crew"
   },
   {

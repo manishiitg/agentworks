@@ -54,6 +54,7 @@ func externalCrewChatDefinitions(add func(string, string, bool, bool, map[string
 		"connection_id":        externalString("For set_model and side_open: your personal or available company account ID from provider_connections in the chats list. Only this chat uses it; an empty engine uses the project's fallback."),
 		"reasoning_effort":     externalString("For set_model and side_open: optional reasoning level."),
 		"name":                 externalString("A short tab name saying what the agent is for; required for side_open and side_rename."),
+		"target_project":       externalString("For fork: optional destination project ID to fork this chat into instead of crew_id."),
 		"chat_id":              externalString("main or a side chat id from list. For side_open: the chat the new agent is opened from (it starts on that chat's model)."),
 		"group_op":             map[string]any{"type": "string", "enum": []any{"new", "move", "rename", "ungroup"}, "description": "For action group, your own left-menu groups of this project's agents (layout only): new puts chat_id in a new group called name; move puts it in group (empty takes it out); rename renames group to name; ungroup removes group."},
 		"group":                externalString("For action group: the existing group (move, rename, ungroup)."),
@@ -391,13 +392,22 @@ func (api *StreamingAPI) externalCrewChatsCall(w http.ResponseWriter, r *http.Re
 			externalError(w, 400, "invalid_arguments", modelErr.Error())
 			return
 		}
-		if status, reason := api.refuseNewTabModel(r, manifest.Product, crewID, tabModel); status != 0 {
+		targetProject := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(externalArg(args, "target_project")), "crew:"))
+		destCrewID := crewID
+		if targetProject != "" && targetProject != crewID {
+			destCrewID = targetProject
+		}
+		if status, reason := api.refuseNewTabModel(r, manifest.Product, destCrewID, tabModel); status != 0 {
 			externalError(w, status, "model_refused", reason+". Choose a provider, model and reasoning level offered by models action=list; no fork was made.")
 			return
 		}
-		status, body := scheduleHandler(r, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", vars, nil, map[string]any{"conversation_key": chat.key, "name": externalArg(args, "name")})
+		payload := map[string]any{"conversation_key": chat.key, "name": externalArg(args, "name")}
+		if destCrewID != crewID {
+			payload["target_project"] = destCrewID
+		}
+		status, body := scheduleHandler(r, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", vars, nil, payload)
 		if status < 400 {
-			body = api.applyForkModel(r, manifest.Product, crewID, tabModel, body)
+			body = api.applyForkModel(r, manifest.Product, destCrewID, tabModel, body)
 		}
 		respond(status, body)
 	case "new":
