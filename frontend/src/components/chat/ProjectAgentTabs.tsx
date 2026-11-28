@@ -304,6 +304,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         sharedWith: share?.line,
         sharedChosen: share?.chosen,
         teamShare: team?.team.on ? agentTeamShareFromRow(teamRow) : undefined,
+        onlyMe: Boolean(team?.team.on && teamRow?.mine && !teamRow.in_team),
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         // Your own agents message it with this line, Team on or not (owner, 28 Nov: the menu must say how agents message it).
         messageLine: `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
