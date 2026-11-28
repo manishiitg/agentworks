@@ -18,6 +18,7 @@ func TestChatModeEffectiveNeverAddsReach(t *testing.T) {
 		{chatAccessLegacyFull, "claude-code", true, chatAccessProject},
 		{chatAccessAutoReview, "claude-code", true, chatAccessAutoReview},
 		{chatAccessAutoReview, "cursor-cli", true, chatAccessAutoReview},
+		{chatAccessAutoReview, "agy-cli", true, chatAccessAutoReview},
 		{chatAccessAutoReview, "codex-cli", true, chatAccessProject},
 		{chatAccessAutoReview, "claude-code", false, chatAccessProject},
 		{chatAccessProject, "claude-code", true, chatAccessProject},

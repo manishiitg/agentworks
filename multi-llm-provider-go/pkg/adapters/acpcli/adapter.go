@@ -119,8 +119,11 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 	instructionsEmpty := strings.TrimSpace(system) == ""
 	// Instruction changes are delivered in the turn message via instructions.Tracker
 	// instead of restarting the ACP process and wiping the prompt cache (#4560).
-	config := map[string]any{"agent": agent.ID, "working_dir": workdir, "mcp_config": mcpJSON, "native_tools_mode": mode, "instructions_empty": instructionsEmpty}
-	fingerprint := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%t", agent.ID, workdir, mcpJSON, mode, instructionsEmpty)
+	// Auto-review is a launch setting (the agent's permission flags differ), so a changed mode relaunches the
+	// process, which resumes the same conversation.
+	review := agent.AutoReviewMode != "" && llmtypes.CodingAgentAutoReviewForSession(ctx, owner)
+	config := map[string]any{"agent": agent.ID, "working_dir": workdir, "mcp_config": mcpJSON, "native_tools_mode": mode, "instructions_empty": instructionsEmpty, "auto_review": review}
+	fingerprint := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%t\x00%t", agent.ID, workdir, mcpJSON, mode, instructionsEmpty, review)
 	parts := llmtypes.AgentProcessDigests(config)
 
 	sessions.Lock()
@@ -146,7 +149,7 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 		}
 	}
 	if s == nil {
-		if s, err = launch(ctx, agent, opts, owner, workdir, mode, mcpJSON, resume, system); err != nil {
+		if s, err = launch(ctx, agent, opts, owner, workdir, mode, mcpJSON, resume, system, review); err != nil {
 			return nil, err
 		}
 		s.rpc.process.Launched(nil, launchReason)
@@ -206,7 +209,7 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 	return response, err
 }
 
-func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner, workdir, mode, mcpJSON, resume, system string) (*session, error) {
+func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner, workdir, mode, mcpJSON, resume, system string, review bool) (*session, error) {
 	servers, err := parseMCPServers(owner, mcpJSON)
 	if err != nil {
 		return nil, err
@@ -214,7 +217,7 @@ func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner,
 	full := mode == "full"
 	var spec *LaunchSpec
 	if agent.Launch != nil {
-		if spec, err = agent.Launch(LaunchRequest{Opts: opts, Owner: owner, WorkDir: workdir, ToolsMode: mode, MCPConfig: mcpJSON}); err != nil {
+		if spec, err = agent.Launch(LaunchRequest{Opts: opts, Owner: owner, WorkDir: workdir, ToolsMode: mode, MCPConfig: mcpJSON, AutoReview: review}); err != nil {
 			return nil, err
 		}
 	}
@@ -225,11 +228,13 @@ func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner,
 	rpc.process = llmtypes.NewAgentProcess(agent.providerID(), owner)
 	// Same rule as the other coding agents: a mounted bridge (legacy unset
 	// mode) or Full tools runs without per-tool prompts; mcp_only asks.
-	auto := full || (mode == "" && len(servers) > 0)
+	// Under Auto-review the agent's own reviewer approves; nothing here allows on its behalf.
+	auto := !review && (full || (mode == "" && len(servers) > 0))
 	s := &session{agent: agent, rpc: rpc, env: env, workdir: workdir, autoApprove: auto, fullTools: full}
 	if spec != nil {
-		s.autoApprove = s.autoApprove || spec.AutoApprove
+		s.autoApprove = s.autoApprove || (spec.AutoApprove && !review)
 		s.questionPrefix = spec.QuestionIDPrefix
+		s.preApproved = spec.PreApproved
 		s.outcome = spec.Outcome
 		if spec.NoSessionMCP {
 			servers = []mcpServer{}
@@ -242,6 +247,12 @@ func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner,
 		}
 		s.closeNow()
 		return nil, err
+	}
+	if review {
+		if err := s.reviewMode(ctx); err != nil {
+			s.closeNow()
+			return nil, err
+		}
 	}
 	return s, nil
 }

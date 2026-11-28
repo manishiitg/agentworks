@@ -2,9 +2,11 @@ package agycli
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -127,7 +129,8 @@ func agyACPLaunch(req acpcli.LaunchRequest) (*acpcli.LaunchSpec, error) {
 	}
 	// A mounted bridge or Full CLI runs without per-tool prompts; the
 	// tool-mode hook still decides what may run.
-	if strings.TrimSpace(req.MCPConfig) != "" || agyFullNativeToolsMode(req.ToolsMode) {
+	// Under Auto-review agy's own Auto mode approves instead, so it keeps its permission checks.
+	if !req.AutoReview && (strings.TrimSpace(req.MCPConfig) != "" || agyFullNativeToolsMode(req.ToolsMode)) {
 		args = append(args, "--dangerously-skip-permissions")
 	}
 	privateHome, releaseHome, err := agyIsolatedHomeForCall(servers, req.WorkDir, opts)
@@ -159,8 +162,30 @@ func agyACPLaunch(req acpcli.LaunchRequest) (*acpcli.LaunchSpec, error) {
 		QuestionIDPrefix: "interaction_",
 		NoSessionMCP:     true, // the MCP catalogue is in agy's private home
 		Outcome:          agyACPOutcome{home: agyTranscriptHome(opts)},
+		PreApproved:      agyOwnMCPToolRequest,
 	}, nil
 }
+
+// agyOwnMCPToolRequest: a permission request for a tool of an MCP server AgentWorks mounted in this chat's private
+// agy home (named agentworks-<name>-<pid>-<hex>, agycli_isolated_home.go). Those tools are already authorised for
+// the chat, so under Auto-review they run without asking, as in Claude Code (T3 Code does the same for its own
+// server). agy names the server in rawInput.ServerName; releases before 1.5.8 only in the title.
+func agyOwnMCPToolRequest(title string, rawInput json.RawMessage) bool {
+	var input struct {
+		ServerName  *string `json:"ServerName"`
+		CommandLine *string `json:"CommandLine"`
+	}
+	_ = json.Unmarshal(rawInput, &input)
+	if input.CommandLine != nil {
+		return false
+	}
+	if input.ServerName != nil {
+		return strings.HasPrefix(*input.ServerName, "agentworks-")
+	}
+	return agyOwnMCPTitle.MatchString(strings.TrimSpace(title))
+}
+
+var agyOwnMCPTitle = regexp.MustCompile(`^Run mcp_agentworks-[a-z0-9-]+_[A-Za-z0-9_]+\??$`)
 
 // agyLogLaunch records what an agy launch gets, names only: its HOME, whether a Gemini key is in its environment, and
 // the mode of the settings that select key mode (a slot's agy kept asking for a Google login, PLAT-872-86).

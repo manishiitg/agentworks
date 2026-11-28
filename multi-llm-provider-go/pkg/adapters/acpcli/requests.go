@@ -77,6 +77,13 @@ func (s *session) answer(ctx context.Context, msg message, requests *nativeinput
 			_ = s.rpc.reply(msg.ID, selected(choice))
 			return
 		}
+		if s.preApproved != nil && s.preApproved(req.ToolCall.Title, req.ToolCall.RawInput) {
+			// The chat's own AgentWorks tools: already authorised for this chat, so the agent's reviewer
+			// sending them does not make the person approve each one.
+			log.Printf("[NATIVE_APPROVAL] provider=%s agent=%s kind=permission tool_kind=%s action=pre_approved", s.agent.providerID(), s.agent.ID, req.ToolCall.Kind)
+			_ = s.rpc.reply(msg.ID, selected(req.option("allow_once", "allow_always")))
+			return
+		}
 		requests.Start(ctx, string(msg.ID), func(qctx context.Context) {
 			_ = s.rpc.reply(msg.ID, s.askPermission(qctx, req))
 		})
