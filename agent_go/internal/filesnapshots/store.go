@@ -172,10 +172,11 @@ type Store struct {
 }
 
 type storeState struct {
-	gate    chan struct{}
-	warming atomic.Bool
-	limit   fileLimitCache
-	repos   repoReads
+	gate      chan struct{}
+	warming   atomic.Bool
+	gcRunning atomic.Bool
+	limit     fileLimitCache
+	repos     repoReads
 }
 
 // ErrWarming means the background index build (Warm) holds this Crew's gate;
@@ -667,7 +668,12 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 	if err != nil {
 		return Record{}, err
 	}
-	defer unlock()
+	unlocked := false
+	defer func() {
+		if !unlocked {
+			unlock()
+		}
+	}()
 	r, err := s.read(ID(execution))
 	if err != nil {
 		return r, err
@@ -718,6 +724,9 @@ func (s Store) Finish(ctx context.Context, execution string) (Record, error) {
 		return r, saveErr
 	}
 	s.prune(ctx)
+	unlock()
+	unlocked = true
+	s.scheduleGarbageCollection()
 	return r, nil
 }
 
@@ -779,26 +788,68 @@ func (s Store) prune(ctx context.Context) {
 	if removed {
 		_ = os.WriteFile(s.gcPendingPath(), nil, 0o600)
 	}
-	s.collectGarbage(ctx, time.Now())
 }
 
 // gcEvery spaces out reclaiming expired replies' files. Git rewrites the
-// whole private store to do it (640 MB, about 4-5 s on a large Crew), and it
-// runs under the store gate, so doing it after every reply made the next
-// send in the Crew wait (#4080). Expired replies' records and refs are still
-// removed at once; only the disk space comes back later.
+// whole private store to do it (640 MB, about 4-8 s on a large Crew), so
+// expired replies' records and refs are removed at once while the disk-space
+// reclaim runs asynchronously only when the store gate is idle (#4080, #4667).
 const gcEvery = 24 * time.Hour
+
+var gcIdleDelay = 2 * time.Second
 
 func (s Store) gcPendingPath() string { return filepath.Join(s.dir(), "gc-pending") }
 func (s Store) gcDonePath() string    { return filepath.Join(s.dir(), "gc-done") }
 
-// collectGarbage reclaims expired replies' files when some are waiting and the
-// last reclaim is at least gcEvery old. The caller holds the store gate.
-func (s Store) collectGarbage(ctx context.Context, now time.Time) bool {
+func (s Store) gcDue(now time.Time) bool {
 	if _, err := os.Stat(s.gcPendingPath()); err != nil {
 		return false
 	}
 	if done, err := os.Stat(s.gcDonePath()); err == nil && now.Sub(done.ModTime()) < gcEvery {
+		return false
+	}
+	return true
+}
+
+// scheduleGarbageCollection runs collectGarbage in a single background
+// goroutine per store once the store gate is idle, so reply captures never
+// block on git gc (#4667).
+func (s Store) scheduleGarbageCollection() {
+	if !s.gcDue(time.Now()) {
+		return
+	}
+	st := s.state()
+	if !st.gcRunning.CompareAndSwap(false, true) {
+		return
+	}
+	delay := gcIdleDelay
+	go func() {
+		defer st.gcRunning.Store(false)
+		if delay > 0 {
+			timer := time.NewTimer(delay)
+			<-timer.C
+		}
+		if !s.gcDue(time.Now()) {
+			return
+		}
+		// Non-blocking try-acquire: if a reply capture is active, skip this
+		// round without queuing behind it; the next reply will reschedule.
+		select {
+		case st.gate <- struct{}{}:
+		default:
+			return
+		}
+		defer func() { <-st.gate }()
+		gcCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+		s.collectGarbage(gcCtx, time.Now())
+	}()
+}
+
+// collectGarbage reclaims expired replies' files when some are waiting and the
+// last reclaim is at least gcEvery old. The caller holds the store gate.
+func (s Store) collectGarbage(ctx context.Context, now time.Time) bool {
+	if !s.gcDue(now) {
 		return false
 	}
 	started := time.Now()

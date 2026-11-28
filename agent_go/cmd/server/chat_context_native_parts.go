@@ -15,7 +15,13 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
-const claudeTranscriptBreakdownCacheMaxEntries = 256
+const (
+	claudeTranscriptBreakdownCacheMaxEntries = 256
+	claudeTranscriptAsyncColdBytes           = 1 << 20 // 1 MB: avoid blocking GET /api/chat-context on cold huge transcripts (#4667)
+	museBreakdownCacheFreshTTL               = 15 * time.Second
+	museBreakdownCacheStaleTTL               = 5 * time.Minute
+	museBreakdownCacheMaxEntries             = 256
+)
 
 type claudeTranscriptBreakdownEntry struct {
 	size        int64
@@ -33,6 +39,7 @@ type claudeTranscriptBreakdownCache struct {
 	refreshing           map[string]bool
 	maxEntries           int
 	staleWhileRevalidate bool
+	asyncColdBytes       int64
 	parse                func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool)
 }
 
@@ -43,7 +50,123 @@ func parseClaudeTranscriptBreakdown(nativeID, workingDir, accountHome string) (c
 var defaultClaudeTranscriptBreakdownCache = &claudeTranscriptBreakdownCache{
 	maxEntries:           claudeTranscriptBreakdownCacheMaxEntries,
 	staleWhileRevalidate: true,
+	asyncColdBytes:       claudeTranscriptAsyncColdBytes,
 	parse:                parseClaudeTranscriptBreakdown,
+}
+
+type museBreakdownCacheEntry struct {
+	breakdown  musecli.ContextBreakdown
+	ok         bool
+	expires    time.Time
+	staleUntil time.Time
+}
+
+type museBreakdownCache struct {
+	mu         sync.Mutex
+	entries    map[string]museBreakdownCacheEntry
+	refreshing map[string]bool
+	freshTTL   time.Duration
+	staleTTL   time.Duration
+	read       func(nativeID, dataHome string) (musecli.ContextBreakdown, bool)
+}
+
+func readMuseContextBreakdown(nativeID, dataHome string) (musecli.ContextBreakdown, bool) {
+	return musecli.ReadContextBreakdown(nativeID, dataHome)
+}
+
+var defaultMuseBreakdownCache = &museBreakdownCache{
+	entries:    map[string]museBreakdownCacheEntry{},
+	refreshing: map[string]bool{},
+	freshTTL:   museBreakdownCacheFreshTTL,
+	staleTTL:   museBreakdownCacheStaleTTL,
+	read:       readMuseContextBreakdown,
+}
+
+func (c *museBreakdownCache) store(key string, b musecli.ContextBreakdown, ok bool, now time.Time) {
+	freshTTL := c.freshTTL
+	if freshTTL <= 0 {
+		freshTTL = museBreakdownCacheFreshTTL
+	}
+	staleTTL := c.staleTTL
+	if staleTTL <= 0 {
+		staleTTL = museBreakdownCacheStaleTTL
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = map[string]museBreakdownCacheEntry{}
+	}
+	for k, e := range c.entries {
+		if now.After(e.staleUntil) {
+			delete(c.entries, k)
+		}
+	}
+	if len(c.entries) >= museBreakdownCacheMaxEntries {
+		for k := range c.entries {
+			delete(c.entries, k)
+			break
+		}
+	}
+	c.entries[key] = museBreakdownCacheEntry{
+		breakdown:  b,
+		ok:         ok,
+		expires:    now.Add(freshTTL),
+		staleUntil: now.Add(staleTTL),
+	}
+}
+
+func (c *museBreakdownCache) getOrRead(nativeID, dataHome string) (musecli.ContextBreakdown, bool) {
+	readFn := c.read
+	if readFn == nil {
+		readFn = readMuseContextBreakdown
+	}
+	key := nativeID + "\x00" + dataHome
+	now := time.Now()
+	c.mu.Lock()
+	if entry, found := c.entries[key]; found && now.Before(entry.staleUntil) {
+		needsRefresh := !now.Before(entry.expires) && !c.refreshing[key]
+		if needsRefresh {
+			if c.refreshing == nil {
+				c.refreshing = map[string]bool{}
+			}
+			c.refreshing[key] = true
+		}
+		c.mu.Unlock()
+		if needsRefresh {
+			go func() {
+				defer func() {
+					c.mu.Lock()
+					delete(c.refreshing, key)
+					c.mu.Unlock()
+				}()
+				defer recoverDetachedGoroutine("muse_context_breakdown", key)
+				b, ok := readFn(nativeID, dataHome)
+				c.store(key, b, ok, time.Now())
+			}()
+		}
+		return entry.breakdown, entry.ok
+	}
+	// On cold miss, coalesce concurrent reads in background so repeated polls don't pile up.
+	if c.refreshing == nil {
+		c.refreshing = map[string]bool{}
+	}
+	if !c.refreshing[key] {
+		c.refreshing[key] = true
+		c.mu.Unlock()
+		go func() {
+			defer func() {
+				c.mu.Lock()
+				delete(c.refreshing, key)
+				c.mu.Unlock()
+			}()
+			defer recoverDetachedGoroutine("muse_context_breakdown", key)
+			b, ok := readFn(nativeID, dataHome)
+			c.store(key, b, ok, time.Now())
+		}()
+		return musecli.ContextBreakdown{}, false
+	}
+	c.mu.Unlock()
+	return musecli.ContextBreakdown{}, false
 }
 
 func (c *claudeTranscriptBreakdownCache) store(transcriptPath string, size, modTimeNano int64, breakdown claudecode.ContextBreakdown, ok bool) {
@@ -127,6 +250,26 @@ func (c *claudeTranscriptBreakdownCache) getOrParse(nativeID, workingDir, accoun
 			return entry.breakdown, entry.ok
 		}
 	}
+	if c.staleWhileRevalidate && c.asyncColdBytes > 0 && size >= c.asyncColdBytes {
+		if c.refreshing == nil {
+			c.refreshing = map[string]bool{}
+		}
+		if !c.refreshing[transcriptPath] {
+			c.refreshing[transcriptPath] = true
+			go func(path string, sz, mtime int64) {
+				defer func() {
+					c.mu.Lock()
+					delete(c.refreshing, path)
+					c.mu.Unlock()
+				}()
+				defer recoverDetachedGoroutine("claude_transcript_breakdown", path)
+				b, ok := parse(nativeID, workingDir, accountHome)
+				c.store(path, sz, mtime, b, ok)
+			}(transcriptPath, size, modTimeNano)
+		}
+		c.mu.Unlock()
+		return claudecode.ContextBreakdown{}, false
+	}
 	c.mu.Unlock()
 
 	breakdown, ok := parse(nativeID, workingDir, accountHome)
@@ -162,7 +305,7 @@ func (api *StreamingAPI) nativeChatBreakdown(ctx context.Context, owner string, 
 		if accountHome != "" {
 			dataHome = filepath.Join(accountHome, ".local", "share")
 		}
-		m, ok := musecli.ReadContextBreakdown(nativeID, dataHome)
+		m, ok := defaultMuseBreakdownCache.getOrRead(nativeID, dataHome)
 		if !ok {
 			return nativeBreakdown{}, false
 		}

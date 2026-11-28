@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/claudecode"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 // #4198: repeated GET /api/chat-context reads must reuse the cached transcript
@@ -153,4 +154,125 @@ func TestClaudeTranscriptBreakdownCacheServesStaleWhileRevalidating(t *testing.T
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("background refresh did not update cache in time (parses=%d)", parses.Load())
+}
+
+func TestClaudeTranscriptBreakdownCacheLargeColdMissRunsAsync(t *testing.T) {
+	home := t.TempDir()
+	workDir := filepath.Join(home, "work")
+	slug := claudeNativeTranscriptProjectSlug(workDir)
+	projectDir := filepath.Join(home, ".claude", "projects", slug)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p1 := filepath.Join(projectDir, "sess-large.jsonl")
+	if err := os.WriteFile(p1, make([]byte, 2048), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var parses atomic.Int32
+	blockParse := make(chan struct{})
+	parseStarted := make(chan struct{}, 2)
+
+	cache := &claudeTranscriptBreakdownCache{
+		maxEntries:           8,
+		staleWhileRevalidate: true,
+		asyncColdBytes:       1024,
+		parse: func(nativeID, workingDir, accountHome string) (claudecode.ContextBreakdown, bool) {
+			parses.Add(1)
+			select {
+			case parseStarted <- struct{}{}:
+			default:
+			}
+			<-blockParse
+			return claudecode.ContextBreakdown{Total: 4200, Setup: 100}, true
+		},
+	}
+
+	start := time.Now()
+	_, ok := cache.getOrParse("sess-large", workDir, home)
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("large cold miss blocked for %v", elapsed)
+	}
+	if ok {
+		t.Fatal("expected cold async miss to return ok=false immediately")
+	}
+	// Concurrent second poll must deduplicate.
+	_, _ = cache.getOrParse("sess-large", workDir, home)
+
+	<-parseStarted
+	close(blockParse)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b, ok := cache.getOrParse("sess-large", workDir, home)
+		if ok && b.Total == 4200 {
+			if got := parses.Load(); got != 1 {
+				t.Fatalf("parses = %d, want 1", got)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("async cold parse did not populate cache in time (parses=%d)", parses.Load())
+}
+
+func TestMuseContextBreakdownCacheSWRServesStaleAndRefreshes(t *testing.T) {
+	var reads atomic.Int32
+	blockSecond := make(chan struct{})
+	secondStarted := make(chan struct{}, 1)
+
+	cache := &museBreakdownCache{
+		entries:    map[string]museBreakdownCacheEntry{},
+		refreshing: map[string]bool{},
+		freshTTL:   20 * time.Millisecond,
+		staleTTL:   5 * time.Minute,
+		read: func(nativeID, dataHome string) (musecli.ContextBreakdown, bool) {
+			n := int(reads.Add(1))
+			if n >= 2 {
+				select {
+				case secondStarted <- struct{}{}:
+				default:
+				}
+				<-blockSecond
+			}
+			return musecli.ContextBreakdown{Total: n * 1000}, true
+		},
+	}
+
+	// Cold miss runs asynchronously without blocking.
+	_, ok := cache.getOrRead("muse-sess-1", "/tmp/muse-home")
+	if ok {
+		t.Fatal("expected cold miss ok=false")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b, ok := cache.getOrRead("muse-sess-1", "/tmp/muse-home")
+		if ok && b.Total == 1000 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Wait past freshTTL: stale hit returns immediately and refreshes in background.
+	time.Sleep(30 * time.Millisecond)
+	start := time.Now()
+	b2, ok := cache.getOrRead("muse-sess-1", "/tmp/muse-home")
+	if elapsed := time.Since(start); elapsed > 200*time.Millisecond {
+		t.Fatalf("stale read blocked for %v", elapsed)
+	}
+	if !ok || b2.Total != 1000 {
+		t.Fatalf("stale read = %+v ok=%v, want Total=1000", b2, ok)
+	}
+	<-secondStarted
+	close(blockSecond)
+
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		b3, ok := cache.getOrRead("muse-sess-1", "/tmp/muse-home")
+		if ok && b3.Total == 2000 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("background refresh did not update muse cache (reads=%d)", reads.Load())
 }

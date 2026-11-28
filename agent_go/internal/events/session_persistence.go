@@ -42,6 +42,16 @@ func (es *EventStore) SetSessionPersistenceClass(sessionID string, class Session
 		return fmt.Errorf("invalid session persistence class %q", class)
 	}
 
+	es.mu.RLock()
+	if existing, ok := es.persistenceClasses[sessionID]; ok {
+		es.mu.RUnlock()
+		if existing != class && class == SessionPersistenceInteractiveChat {
+			return fmt.Errorf("session %s persistence class is already %q, cannot change to %q", sessionID, existing, class)
+		}
+		return nil
+	}
+	es.mu.RUnlock()
+
 	es.adoptJournaledSession(sessionID)
 	es.mu.Lock()
 	if existing, ok := es.persistenceClasses[sessionID]; ok {
