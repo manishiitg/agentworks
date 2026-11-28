@@ -30,13 +30,11 @@ export function agentMessagePrompt(agent: string, project: string) {
 // How your other agents reach this one (owner, 28 Nov, #4510): one line to say in Claude Code, Codex or another agent,
 // replacing the AgentBridge page. Messages between agents on this Mac need no server. The line shown stays short;
 // Copy takes the full how-to (agentMessagePrompt).
-export function AgentMessageFrom({ line, copyText, online }: { line: string, copyText?: string, online?: boolean }) {
+export function AgentMessageFrom({ line, copyText }: { line: string, copyText?: string }) {
   const [copied, setCopied] = useState(false)
   const [connect, setConnect] = useState(false)
   const onMac = hasDesktopConnections()
   const copy = () => { void navigator.clipboard?.writeText(copyText || line).then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500) }).catch(() => {}) }
-  // An online project (owner, 28 Nov): no line to copy and no setup; other agents reach it only through its Team.
-  if (online) return <p className="text-muted-foreground">This project is online, so agents on your Mac don’t message it directly. Teammates and their agents ask it through the project’s Team.</p>
   return <div className="space-y-1.5 text-muted-foreground">
     <p>In Claude Code, Codex, Cursor, Antigravity or any agent connected to AgentWorks on this Mac, say:</p>
     <div className="flex items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 font-mono text-[11px] text-foreground">
