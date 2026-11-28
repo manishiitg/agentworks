@@ -1,4 +1,4 @@
-import { Zap, Search, Bot } from 'lucide-react'
+import { Clock, Search, Bot } from 'lucide-react'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
 import { quickNavigationItems, openQuickNavigation } from '../../utils/quickNavigation'
@@ -28,6 +28,6 @@ export function SidebarActions() {
     <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => window.dispatchEvent(new CustomEvent('open-quick-switcher'))}><Search aria-hidden="true" className="h-4 w-4" /><span className="flex-1">Search</span><kbd className="text-[10px] text-muted-foreground">{navigator.platform.includes('Mac') ? '⌘K' : 'Ctrl K'}</kbd></button>
     {/* Bots (#4545): the company's directory of shared agents, on the server (from a Mac: every server it is signed in to). */}
     {botServers !== '' && <button data-theme-row="navigation" type="button" className={rowClass} aria-current={botsDirectory ? 'page' : undefined} title={botServers ? `Shared agents on ${botServers}` : undefined} onClick={() => { showBots(); window.dispatchEvent(new Event('close-app-sidebar')) }}><Bot aria-hidden="true" className="h-4 w-4" /><span className="flex-1">Bots</span>{botCount > 0 && <span className="text-[10px] tabular-nums text-muted-foreground">{botCount}</span>}</button>}
-    {schedules && <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => { setBotsOpen(false); openQuickNavigation(schedules); window.dispatchEvent(new Event('close-app-sidebar')) }}><Zap aria-hidden="true" className="h-4 w-4" />Workflows</button>}
+    {schedules && <button data-theme-row="navigation" type="button" className={rowClass} onClick={() => { setBotsOpen(false); openQuickNavigation(schedules); window.dispatchEvent(new Event('close-app-sidebar')) }}><Clock aria-hidden="true" className="h-4 w-4" />Schedules</button>}
   </nav>
 }
