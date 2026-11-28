@@ -10,8 +10,12 @@ export function openAppPage(path: '/' | '/dashboards' | '/projects'): void {
 }
 
 /** Resolve a product link through the existing account/project checks. */
+/** Fired on every product open, also when that place is already open: the New project page closes on it. */
+export const APP_PRODUCT_OPEN_EVENT = 'agentworks:product-open'
+
 export function openAppProduct(route: ProductRoute): void {
   const path = productRoutePath(route)
+  window.dispatchEvent(new Event(APP_PRODUCT_OPEN_EVENT))
   if (window.location.pathname + window.location.search === path) return
   window.history.pushState({}, '', path)
   window.dispatchEvent(new PopStateEvent('popstate'))
