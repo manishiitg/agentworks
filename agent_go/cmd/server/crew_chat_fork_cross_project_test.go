@@ -179,10 +179,13 @@ func TestForkCrewChatAcrossProjects(t *testing.T) {
 	if !strings.HasPrefix(note, "[This chat is a fork moved from another project.") || !strings.HasSuffix(note, "]") || strings.Count(note, "]") != 1 {
 		t.Fatalf("unexpected cross-project fork note format: %q", note)
 	}
-	for _, want := range []string{"Test Team", "Finance Workspace", "#team", parent.WorkspacePath, destBinding.WorkspacePath} {
+	for _, want := range []string{"Test Team", "Finance Workspace", "copy_from=", "from_project=", parent.WorkspacePath, destBinding.WorkspacePath} {
 		if !strings.Contains(note, want) {
 			t.Fatalf("cross-project fork note missing %q: %q", want, note)
 		}
+	}
+	if strings.Contains(note, "#team") {
+		t.Fatalf("cross-project fork note should not ask for raw project ID tag: %q", note)
 	}
 	if again := defaultProductConversationRegistryStore().takeForkNote(ctx, "owner", "work", resp.ConversationKey); again != "" {
 		t.Fatalf("fork note should clear after first take: %q", again)

@@ -34,10 +34,13 @@ func TestForkCrossProjectFirstTurnNoteIsAlwaysBracketed(t *testing.T) {
 		if !strings.HasPrefix(note, "[This chat is a fork moved from another project.") || !strings.HasSuffix(note, "]") || strings.Count(note, "]") != 1 {
 			t.Fatalf("purpose %q: cross-project note is not one bracketed block: %q", purpose, note)
 		}
-		for _, want := range []string{"/Users/example/source", "/Users/example/dest", "#source-123", "Source (Proj)", "Dest (Proj)"} {
+		for _, want := range []string{"/Users/example/source", "/Users/example/dest", "Source (Proj)", "Dest (Proj)", "workspace action=references_list", "copy_from=", "from_project=", "by project name, never a raw ID"} {
 			if !strings.Contains(note, want) {
 				t.Fatalf("cross-project note missing %q: %q", want, note)
 			}
+		}
+		if strings.Contains(note, "#source-123") {
+			t.Fatalf("cross-project note must not tell the agent to ask for a raw project ID tag: %q", note)
 		}
 		if purpose != "" && !strings.Contains(note, "The parent's job in Source (Proj) was: Tracks (Q4) budgets") {
 			t.Fatalf("purpose missing or unescaped: %q", note)
