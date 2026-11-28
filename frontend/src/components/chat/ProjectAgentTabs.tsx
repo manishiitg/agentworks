@@ -7,6 +7,7 @@ import { OnlineAgentLine } from '../../products/work/OnlineAgentLine'
 import { PendingAgentForks } from './PendingAgentForks'
 import { LocalMcpImportDialog } from '../../products/work/LocalMcpImport'
 import { ForkToTeammate } from './ForkToTeammate'
+import { ForkToProjectDialog } from '../../products/work/ForkToProjectDialog'
 import { ContinueOnlineDialog } from './ContinueOnline'
 import { continueInTerminal } from './TerminalResume'
 import { forkChatTab } from '../../utils/forkChatTab'
@@ -85,6 +86,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const activeTabId = useChatStore(state => state.activeTabId)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [forkTo, setForkTo] = useState<{ id: string; name: string } | null>(null)
+  const [forkToProject, setForkToProject] = useState<{ tabId: string; name: string } | null>(null)
   const [continueOnline, setContinueOnline] = useState<{ tabId: string; key: string; name: string } | null>(null)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
@@ -339,6 +341,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     return {
       forkTo: surface === 'work' && canControl(tab) && team?.team.on && shareSource ? () => setForkTo({ id: shareSource.id, name: shareSource.name }) : undefined,
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
+      forkToProject: surface === 'work' && isAgentTab(tab) && canControl(tab) && placeProject ? () => setForkToProject({ tabId: tab.tabId, name: tabLabel(tab) }) : undefined,
       // Continue online (#4520): only an own chat of a project on this Mac (paired with its Team, or not yet); an online
       // agent's tab already runs on the server. The Mac's readiness check says what is missing.
       continueOnline: surface === 'work' && isAgentTab(tab) && canControl(tab) && macProject && !tab.metadata?.agentProfileOnlineProject && (tab.metadata?.agentProfileConversationKey || tab.tabId === canonicalTabId)
@@ -690,6 +693,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {importMcp && placeProject && <LocalMcpImportDialog projectId={placeProject} onClose={() => setImportMcp(false)} />}
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
+      {forkToProject && placeProject && <ForkToProjectDialog tabId={forkToProject.tabId} sourceProjectId={placeProject} name={forkToProject.name} close={() => setForkToProject(null)} />}
       {continueOnline && macProject && <ContinueOnlineDialog project={macProject} chatKey={continueOnline.key} tabId={continueOnline.tabId} name={continueOnline.name} close={() => setContinueOnline(null)} />}
       {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}

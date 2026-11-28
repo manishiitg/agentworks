@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, FolderInput, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -67,6 +67,8 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   forkTo?: () => void
+  /** Fork this chat into another project the caller can build (#4648). */
+  forkToProject?: () => void
   /** Continue online (#4520): move this Mac chat to an agent in the Team's online project. */
   continueOnline?: () => void
   fork?: () => unknown
@@ -256,9 +258,9 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="Nothing starts this agent on its own yet." explain />}
           {addAutomation}
         </div>)}
-      {((!shareShortcut && actions?.forkTo) || actions?.continueOnline || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
+      {((!shareShortcut && actions?.forkTo) || actions?.continueOnline || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.forkToProject || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
         const menuRow = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground/90 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70 max-md:min-h-10 max-md:text-sm'
-        const hasUpperAction = Boolean((!shareShortcut && actions?.forkTo) || actions?.continueOnline || (clickToOpen && actions?.fork) || actions?.terminal || onRename || (clickToOpen && actions?.rename) || (clickToOpen && actions?.setSidebarHidden) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing))
+        const hasUpperAction = Boolean((!shareShortcut && actions?.forkTo) || actions?.continueOnline || (clickToOpen && (actions?.fork || actions?.forkToProject)) || actions?.terminal || onRename || (clickToOpen && actions?.rename) || (clickToOpen && actions?.setSidebarHidden) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing))
         return <div className={clickToOpen ? 'mt-1 flex flex-col gap-0.5 border-t border-border pt-1.5' : 'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10'}>
         {renameDraft !== null ? <input autoFocus aria-label={`New name for ${info.name}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)}
           onKeyDown={event => {
@@ -273,6 +275,9 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
             try { await actions.fork!() } finally { setForking(false); dismiss() }
           }} className={menuRow}>
             {forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}{forking ? 'Forking chat…' : 'Fork chat'}
+          </button>}
+          {clickToOpen && actions?.forkToProject && <button type="button" onClick={() => finish(actions.forkToProject!)} className={menuRow}>
+            <FolderInput aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Fork to project…
           </button>}
           {actions?.continueOnline && <button type="button" onClick={() => finish(actions.continueOnline!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><Cloud aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Continue online…</button>}
           {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
@@ -404,6 +409,7 @@ export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, o
       try { await actions.fork!() } finally { setForking(false); onDone() }
     }}>{forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 animate-spin" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5" />}{forking ? 'Forking chat…' : 'Fork chat'}</button>}
     {forking && <p role="status" className="px-2 py-1 text-[11px] text-muted-foreground">Copying conversation history. Your new chat will open when ready.</p>}
+    {actions.forkToProject && <button type="button" role="menuitem" className={item} onClick={() => run(actions.forkToProject!)}><FolderInput aria-hidden="true" className="h-3.5 w-3.5" />Fork to project…</button>}
     {actions.rename && <button type="button" role="menuitem" className={item} onClick={() => setDraft(actions.renameDraft || name)}><Pencil aria-hidden="true" className="h-3.5 w-3.5" />Rename</button>}
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}

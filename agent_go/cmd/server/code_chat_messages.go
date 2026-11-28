@@ -463,7 +463,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				go api.refreshMacSharedPurposes(context.WithoutCancel(ctx), project.ProjectID)
 				return jsonOut(map[string]interface{}{"name": firstNonEmptyTrimmed(identity.Name, project.Self.Name), "purpose": identity.Purpose, "examples": identity.Examples})
 			}},
-		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat), or beside you with place=beside, and follows that agent's group; group puts it in a named group instead. With task, the fork starts on it at once as your AgentBridge ask and its answer comes back to you; without task no turn starts. purpose and instructions set the fork up in the same call when the person asks for an agent with its own rules.", map[string]interface{}{
+		{"fork_project_chat", "Fork one of your own chats into an independent tab with its saved conversation and native context where supported. Prefer this over a new empty tab for related work that needs context. The fork is shown in the person's left menu under you (or under its source when you fork your own chat), or beside you with place=beside, and follows that agent's group; group puts it in a named group instead. With target_project (must be tagged with # in this turn), forks the chat as a top-level agent in that project instead (conversation only; files, memory and logins stay behind). With task, the fork starts on it at once as your AgentBridge ask and its answer comes back to you; without task no turn starts. purpose and instructions set the fork up in the same call when the person asks for an agent with its own rules.", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"place":            map[string]interface{}{"type": "string", "enum": []string{"under", "beside"}, "description": "Where it sits in the person's left menu: under (the default) as your helper that reports back, or beside you as its own agent at your level that works with the person and does not report back (other work that needs this context but stands on its own)."},
 				"group":            map[string]interface{}{"type": "string", "maxLength": agentGroupNameMaxRunes, "description": "Optional: put the new agent in this group of the person's left menu (see group in sessions action=list): it joins the group of that name or starts it, as its own agent under no one. Only when the person names a group."},
@@ -472,6 +472,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				"task":             map[string]interface{}{"type": "string", "description": "The fork's first task, in full. It starts working on it right away and replies to you. Pass it whenever you know what the fork should do; do not ask the person to open the fork and say go."},
 				"chat":             map[string]interface{}{"type": "string", "description": "Source chat id or name from sessions action=list; main selects your default chat."},
 				"name":             map[string]interface{}{"type": "string", "maxLength": 120, "description": "Optional name for the new fork; otherwise the source name plus (fork)."},
+				"target_project":   map[string]interface{}{"type": "string", "description": "Optional: destination project ID to fork this chat into (must be tagged with # in the current turn). Omit to fork in the current project."},
 				"engine":           map[string]interface{}{"type": "string", "description": "Optional: run the fork on this provider (an engine from models action=list, e.g. cursor-cli). It starts a new native session from the copied conversation. Same checks as models action=set scope=tab; a refused choice makes no fork. Omit to keep the source's model."},
 				"model_id":         map[string]interface{}{"type": "string", "description": "With engine: a model that provider offers."},
 				"reasoning_effort": map[string]interface{}{"type": "string", "description": "With engine: an optional reasoning level that model offers."},
@@ -487,8 +488,17 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
+				targetProject := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(stringToolArg(args, "target_project")), "crew:"))
+				crossProject := targetProject != "" && targetProject != project.ProjectID
+				destProjectID := project.ProjectID
+				if crossProject {
+					if reach, reachErr := crewReachFrom(ctx, workspacePath); reachErr != nil || (reach != nil && !reach.projects[targetProject]) {
+						return "", fmt.Errorf("tag that project with # in your message first to fork an agent into it, or fork from the app menu")
+					}
+					destProjectID = targetProject
+				}
 				if claims := GetUserFromContext(ctx); claims != nil && claims.AccessToken != nil {
-					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) {
+					if !claims.AccessToken.Allows("crews:write") || !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(project.ProjectID)) || (crossProject && !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(destProjectID))) {
 						return "", fmt.Errorf("this connection does not allow forking this project chat")
 					}
 				}
@@ -497,7 +507,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 					return "", err
 				}
 				request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(ctx)
-				if status, reason := api.refuseNewTabModel(request, project.ProfileID, project.ProjectID, tabModel); status != 0 {
+				if status, reason := api.refuseNewTabModel(request, project.ProfileID, destProjectID, tabModel); status != 0 {
 					return "", fmt.Errorf("%s. Choose a provider, model and reasoning level offered by models action=list; no fork was made", reason)
 				}
 				task := strings.TrimSpace(stringToolArg(args, "task"))
@@ -516,33 +526,42 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				if err != nil {
 					return "", err
 				}
-				status, body := scheduleHandler(request, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", map[string]string{"id": project.ProfileID}, nil, map[string]any{"conversation_key": chat.Key, "name": stringToolArg(args, "name"), "task": task})
+				payload := map[string]any{"conversation_key": chat.Key, "name": stringToolArg(args, "name"), "task": task}
+				if crossProject {
+					payload["target_project"] = destProjectID
+				}
+				status, body := scheduleHandler(request, api.handleForkCrewChat, http.MethodPost, "/api/agent-profiles/work/conversation/fork", map[string]string{"id": project.ProfileID}, nil, payload)
 				if status >= 400 {
 					return "", fmt.Errorf("%s", laptopActionErrorText(string(body)))
 				}
-				fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
-				// beside or a group: its own agent, which does not report back (owner, 25 Nov); under: a helper that does.
-				own := place == spawnBeside || group != ""
-				var made struct {
-					Key  string `json:"conversation_key"`
-					Name string `json:"name"`
-				}
-				if json.Unmarshal(body, &made) == nil && made.Key != "" {
-					if place == spawnBeside {
-						placeBesideMaker(ctx, userID, project, made.Key)
+				destProject := project
+				destProject.ProjectID = destProjectID
+				// Cross-project forks stand as their own top-level agent in the destination project and keep their
+				// cross-project first-turn handover note (naming old folder -> new folder).
+				own := crossProject || place == spawnBeside || group != ""
+				if !crossProject {
+					fileForkUnderMaker(ctx, userID, project.ProfileID, project.Self.Key, chat.Key, body)
+					var made struct {
+						Key  string `json:"conversation_key"`
+						Name string `json:"name"`
 					}
-					if !own {
-						setFirstTurnNote(ctx, userID, project, made.Key, forkFirstTurnNote(chat.Name, firstNonEmptyTrimmed(made.Name, chat.Name+" (fork)"), chat.Purpose, false))
+					if json.Unmarshal(body, &made) == nil && made.Key != "" {
+						if place == spawnBeside {
+							placeBesideMaker(ctx, userID, project, made.Key)
+						}
+						if !own {
+							setFirstTurnNote(ctx, userID, project, made.Key, forkFirstTurnNote(chat.Name, firstNonEmptyTrimmed(made.Name, chat.Name+" (fork)"), chat.Purpose, false))
+						}
 					}
 				}
-				out := api.applyForkModel(request, project.ProfileID, project.ProjectID, tabModel, body)
-				out = placeInGroupJSON(ctx, userID, project, group, out)
+				out := api.applyForkModel(request, destProject.ProfileID, destProject.ProjectID, tabModel, body)
+				out = placeInGroupJSON(ctx, userID, destProject, group, out)
 				// Saved before the task is sent, so the fork's first turn already follows them.
-				out = saveSpawnIdentityJSON(ctx, userID, project, identity, out)
+				out = saveSpawnIdentityJSON(ctx, userID, destProject, identity, out)
 				if task == "" {
 					return string(out), nil
 				}
-				return api.sendForkTask(ctx, userID, project, messages, task, own, out), nil
+				return api.sendForkTask(ctx, userID, destProject, messages, task, own, out), nil
 			}},
 		{"delete_project_chat", "Delete a fork or helper tab you made, while it is still under you in the person's left menu, when its work is done or the person asks. Call once without confirmation to see what goes, then again with the returned confirmation. Its saved chats and queued messages are deleted; project files and other agents stay. Refused for Main, for yourself, for a tab you did not make, and for one the person has moved out from under you in the left menu (then the person removes it in the app).", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
