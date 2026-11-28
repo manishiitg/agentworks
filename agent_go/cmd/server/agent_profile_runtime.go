@@ -125,18 +125,24 @@ func agentProfileSessionKey(profile *resolvedAgentProfile) string {
 	sort.Strings(connections)
 	secrets := append([]string(nil), profile.ChatSecrets...)
 	sort.Strings(secrets)
+	publishedRevision := ""
+	if profile.Publication != nil {
+		publishedRevision = strings.TrimSpace(profile.Publication.Revision)
+	}
+	// Keep the process restart key strictly about process-level boundaries (#4560):
+	// role/reply-style (IdentityKey) and project instructions flow through the
+	// adapters' per-turn instructions tracker without restarting the CLI, and
+	// laptop tool access is enforced per turn and per call (laptopTurnAllowed).
+	// ChatSecrets remains in the key so a turn with different $SECRET_* env vars
+	// still launches a clean CLI process.
 	payload, err := json.Marshal(struct {
-		Definition             agentprofiles.Profile   `json:"definition"`
-		SelectedServers        []string                `json:"selected_servers,omitempty"`
-		IdentityKey            string                  `json:"identity_key,omitempty"`
-		ChatConnections        []string                `json:"chat_connections,omitempty"`
-		ChatSecrets            []string                `json:"chat_secrets,omitempty"`
-		KnowledgeKey           string                  `json:"knowledge_key,omitempty"`
-		LaptopConnection       *laptopConnectionTarget `json:"laptop_connection,omitempty"`
-		LaptopConnectionPolicy string                  `json:"laptop_connection_policy,omitempty"`
-		Instructions           string                  `json:"project_instructions,omitempty"`
-	}{Definition: profile.Definition, SelectedServers: servers, IdentityKey: profile.IdentityKey, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey,
-		Instructions: projectinstructions.Key(profile.ProjectInstructions) + ":" + profile.ProjectInstructionSourcesKey, LaptopConnection: profile.LaptopConnection, LaptopConnectionPolicy: profile.LaptopConnectionPolicy})
+		Definition        agentprofiles.Profile `json:"definition"`
+		SelectedServers   []string              `json:"selected_servers,omitempty"`
+		PublishedRevision string                `json:"published_revision,omitempty"`
+		ChatConnections   []string              `json:"chat_connections,omitempty"`
+		ChatSecrets       []string              `json:"chat_secrets,omitempty"`
+		KnowledgeKey      string                `json:"knowledge_key,omitempty"`
+	}{Definition: profile.Definition, SelectedServers: servers, PublishedRevision: publishedRevision, ChatConnections: connections, ChatSecrets: secrets, KnowledgeKey: profile.KnowledgeKey})
 	if err != nil {
 		return fmt.Sprintf("%s@%d", profile.Definition.ID, profile.Definition.Version)
 	}
@@ -467,7 +473,14 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	mark("profile")
 	isGlobalScope := profile.EffectiveScope() == agentprofiles.ProfileScopeGlobal
-	profile = profile.ForProducts(builderProductSelection(GetUserFromContext(ctx)))
+	// On bot_route turns (Slack/schedules), product admission above already verified
+	// access to profile.Product; resolve builder feature selection for the chat's
+	// owner so Definition.ResolvedFeatures does not flip and restart the CLI (#4560).
+	productClaims := GetUserFromContext(ctx)
+	if productClaims != nil && productClaims.Provider == "bot_route" && strings.TrimSpace(userID) != "" {
+		productClaims = &UserClaims{UserID: userID}
+	}
+	profile = profile.ForProducts(builderProductSelection(productClaims))
 	if profile.ID == caplayerproduct.ProfileID {
 		// Vault has no project manifest that copies an installation default.
 		// Use the same configured/ready defaults served by the Models panel;
@@ -603,10 +616,14 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	// When others ask (owner, 5 Nov): another person's ask of this agent gets a note for this turn only. It goes at the
 	// start of the person's message, not the system prompt, so the cached prompt stays the same (owner, 28 Nov).
 	othersAsking := ""
+	tabOwner := userID
 	if isProjectProfileID(profile.ID) {
 		agentOwner := userID
 		if !crewOwned {
 			agentOwner = firstNonEmptyTrimmed(ownerOfCrewProjectID(crewResourceProjectID(req.AgentProfileConversationKey)), resolveProjectOwner(ctx, crewRoot))
+		}
+		if strings.TrimSpace(agentOwner) != "" {
+			tabOwner = agentOwner
 		}
 		othersAsking = whenOthersAskForTurn(ctx, req, userID, agentOwner, strings.TrimSpace(req.AgentProfileConversationKey), sessionID)
 		if othersAsking != "" {
@@ -623,10 +640,10 @@ func (api *StreamingAPI) resolveAgentProfileForQuery(ctx context.Context, req *Q
 	}
 	agentRole := ""
 	if profile.ID == workproduct.ProfileID {
-		agentRole = agentRolePrompt(ctx, userID, profile.ID, req.AgentProfileConversationKey, workspacePath)
-		// The chat's reply style is a standing rule of the chat, so it rides with its role in the prompt (and its
-		// fingerprint, like a purpose change); only the per-turn summary card note goes on the message.
-		replyTab, replyTabFound := chatContextTabForSession(ctx, userID, sessionID)
+		agentRole = agentRolePrompt(ctx, tabOwner, profile.ID, req.AgentProfileConversationKey, workspacePath)
+		// The chat's reply style is a standing rule of the chat, looked up from the
+		// chat owner's tab list so another caller's turn does not drop it (#4560).
+		replyTab, replyTabFound := chatContextTabForSession(ctx, tabOwner, sessionID)
 		if replyTabFound {
 			agentRole += chatReplyStylePrompt(replyTab.Identity)
 		}
@@ -887,18 +904,26 @@ func (api *StreamingAPI) chatSecretNames(ctx context.Context, userID string, req
 // finishes (same list of names, different state), not only when a server is
 // added. Without that the CLI kept the tool-less server and the agent said the
 // connection was fine but had no tools (server A, SDE private, Notion, 2026-09-30).
+// lastChatMCPConnections remembers each user's last successful Vault MCP server list
+// so a transient Vault error does not emit "vault-unavailable" and restart warm CLIs (#4560).
+var lastChatMCPConnections sync.Map // userID -> []string
+
 func chatMCPConnections(ctx context.Context, profileID, userID, selectedFolder string) []string {
 	if !isProjectProfileID(profileID) {
 		return nil
 	}
 	rows, err := vaultServersFor(ctx, userID)
 	if err != nil {
+		if prev, ok := lastChatMCPConnections.Load(userID); ok {
+			return append([]string(nil), prev.([]string)...)
+		}
 		return []string{"vault-unavailable"}
 	}
 	out := make([]string, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, vaultServerName(row.ID)+"#active")
 	}
+	lastChatMCPConnections.Store(userID, append([]string(nil), out...))
 	return out
 }
 

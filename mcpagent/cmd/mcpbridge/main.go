@@ -189,6 +189,23 @@ func bridgeToolOutputDir() string {
 	return ""
 }
 
+// loadBridgeCallTimeouts reads the chat-stable per-tool timeout map written by
+// the parent before each turn (nil when unset or unreadable).
+func loadBridgeCallTimeouts(path string) map[string]int64 {
+	if path == "" {
+		return nil
+	}
+	raw, err := os.ReadFile(filepath.Clean(path)) //nolint:gosec // path comes from the launcher's own env, not model input
+	if err != nil {
+		return nil
+	}
+	var out map[string]int64
+	if json.Unmarshal(raw, &out) != nil {
+		return nil
+	}
+	return out
+}
+
 // bridgeMaxCall parses MCP_BRIDGE_MAX_CALL_SECONDS: a positive whole number of seconds, else 0 (no cap).
 func bridgeMaxCall(raw string) time.Duration {
 	seconds, err := strconv.Atoi(strings.TrimSpace(raw))
@@ -255,6 +272,7 @@ func main() {
 	}
 	virtualScopeID := os.Getenv("MCP_VIRTUAL_SCOPE_ID") // Per-agent scope for virtual tools (prevents parent/child overwrite)
 	sessionID := os.Getenv("MCP_SESSION_ID")
+	callTimeoutsFile := strings.TrimSpace(os.Getenv("MCP_CALL_TIMEOUTS_FILE"))
 	toolOutputDir := bridgeToolOutputDir()
 
 	if apiURL == "" || apiToken == "" || toolsJSON == "" {
@@ -310,6 +328,9 @@ func main() {
 			def := def
 			args := req.GetArguments()
 			if def.Type == "call" {
+				if timeouts := loadBridgeCallTimeouts(callTimeoutsFile); len(timeouts) > 0 {
+					def.CallTimeoutsMillis = timeouts
+				}
 				target, callArgs, err := callToolTarget(def, args)
 				if err != nil {
 					return mcp.NewToolResultText("ERROR: " + err.Error()), nil

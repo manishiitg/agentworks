@@ -359,6 +359,11 @@ func (a *Agent) buildBridgeMCPConfig() (string, error) {
 		a.bridgeReadyFile = readyPath
 		bridgeEnv["MCP_READY_FILE"] = readyPath
 		logger.Info("[CODING_BRIDGE] readiness configured", loggerv2.String("session", a.sessionID), loggerv2.String("mode", "chat_stable"))
+		if timeoutsPath, err := a.writeBridgeCallTimeoutsFile(workingDir, hex.EncodeToString(sum[:16])); err == nil {
+			bridgeEnv["MCP_CALL_TIMEOUTS_FILE"] = timeoutsPath
+		} else {
+			logger.Warn("Failed to write MCP call timeouts file; falling back to default bridge timeout", loggerv2.Error(err))
+		}
 	} else if f, tmpErr := os.CreateTemp("", "mcpbridge-ready-*.marker"); tmpErr == nil {
 		readyPath := f.Name()
 		_ = f.Close()
@@ -497,16 +502,14 @@ func (a *Agent) lookupBridgeTool(name, toolType string, logger loggerv2.Logger) 
 		// call_tool runs a discovered tool through the same per-tool route,
 		// session token and deadline as a direct bridge call; the server's
 		// session registry decides whether that tool exists and may run.
+		// When the chat has a stable artifact directory and session ID, per-tool
+		// timeouts live in the chat-stable MCP_CALL_TIMEOUTS_FILE instead of the
+		// content-hashed MCP_TOOLS_FILE so toggling custom HTTP tools (such as
+		// laptop tools on browser vs agent-message turns) never changes mcp_config
+		// or restarts the coding CLI (#4560).
 		def := marshalBridgeToolDef(name, callToolDescription, callToolParameters, toolType, logger)
-		if def != nil {
-			def.CallTimeoutsMillis = map[string]int64{}
-			for _, tool := range a.directToolSnapshot() {
-				timeout := tool.Timeout
-				if timeout < 0 {
-					timeout = getToolExecutionTimeout(a)
-				}
-				def.CallTimeoutsMillis[tool.Name] = timeout.Milliseconds()
-			}
+		if def != nil && (strings.TrimSpace(a.codingAgentArtifactDir()) == "" || strings.TrimSpace(a.sessionID) == "") {
+			def.CallTimeoutsMillis = a.directToolCallTimeouts()
 		}
 		return def
 
@@ -621,6 +624,50 @@ func (a *Agent) writeBridgeToolsFile(toolsJSON []byte) (string, error) {
 	if writeErr != nil || closeErr != nil {
 		_ = os.Remove(tmpPath)
 		return "", fmt.Errorf("bridge_start_failed: write tool list file %q (%d bytes): %v %v", path, len(toolsJSON), writeErr, closeErr)
+	}
+	return path, nil
+}
+
+func (a *Agent) directToolCallTimeouts() map[string]int64 {
+	timeouts := map[string]int64{}
+	for _, tool := range a.directToolSnapshot() {
+		timeout := tool.Timeout
+		if timeout < 0 {
+			timeout = getToolExecutionTimeout(a)
+		}
+		timeouts[tool.Name] = timeout.Milliseconds()
+	}
+	return timeouts
+}
+
+func (a *Agent) writeBridgeCallTimeoutsFile(dir, sessionHash string) (string, error) {
+	data, err := json.Marshal(a.directToolCallTimeouts())
+	if err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, ".mcpbridge-call-timeouts-"+sessionHash+".json")
+	if existing, err := os.ReadFile(path); err == nil && bytes.Equal(existing, data) { //nolint:gosec // path is built from the agent's own working directory
+		return path, nil
+	}
+	tmp, err := os.CreateTemp(dir, ".mcpbridge-call-timeouts-*.tmp")
+	if err != nil {
+		return "", err
+	}
+	tmpPath := tmp.Name()
+	_, writeErr := tmp.Write(data)
+	closeErr := tmp.Close()
+	if writeErr == nil && closeErr == nil {
+		writeErr = os.Chmod(tmpPath, 0o600)
+	}
+	if writeErr == nil && closeErr == nil {
+		writeErr = os.Rename(tmpPath, path)
+	}
+	if writeErr != nil || closeErr != nil {
+		_ = os.Remove(tmpPath)
+		if writeErr != nil {
+			return "", writeErr
+		}
+		return "", closeErr
 	}
 	return path, nil
 }
