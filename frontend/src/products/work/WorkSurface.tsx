@@ -55,8 +55,8 @@ import { activateTab } from '../../utils/activateTab'
 import { loadWorkProductCommands } from './workData'
 import { CREW_PRODUCT, ProjectProductProvider, type ProjectProductConfig } from './projectProduct'
 import { workProjectActivity } from './workProjectPresentation'
-import { StartPage, type StartFolder, type StartServer } from './StartPage'
-import { useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
+import { StartPage } from './StartPage'
+import { CreateCrewWizard } from './CreateCrewWizard'
 import { prepareCrewOnboarding } from './crewOnboarding'
 import type { CrewOnboarding } from './crewStarterTypes'
 import { projectMenuHistoryScope } from '../../stores/useProjectMenuHistoryStore'
@@ -1329,18 +1329,10 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [projectConfigRefreshToken, refresh])
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [pickingStartChat, setPickingStartChat] = useState(false)
   const startWorkspace = useWorkspaceConnectionStore(state => state.profiles.find(profile => profile.id === state.activeWorkspaceId))
   // An existing folder can be chosen only in the app on this computer; elsewhere the server makes the folder.
   const startCanChooseFolder = isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'
   const startPlace = startCanChooseFolder ? 'This Mac' : startWorkspace?.type === 'remote' ? startWorkspace.name : 'Server'
-  // In the Mac app, New project can also make the project on a server this Mac is signed in to (#4491).
-  const connections = useConnectedWorkStore(useShallow(state => state.connections))
-  const inventory = useConnectedWorkStore(state => state.inventory)
-  const startServers = useMemo<StartServer[]>(() => startCanChooseFolder
-    ? connections.filter(connection => connection.id !== 'local').map(connection => ({ id: connection.id, name: connection.name, online: inventory[connection.id]?.status === 'connected' }))
-    : [], [startCanChooseFolder, connections, inventory])
-  useEffect(() => { if (createOpen && startCanChooseFolder) void useConnectedWorkStore.getState().refresh() }, [createOpen, startCanChooseFolder])
   // Choosing another project leaves the start page.
   useEffect(() => { setCreateOpen(false) }, [selected?.id])
   const [deleteCandidate, setDeleteCandidate] = useState<WorkSession | null>(null)
@@ -1941,7 +1933,14 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         reduced
         activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
       />
-      {pickingStartChat && <LocalChatPicker allFolders onClose={() => setPickingStartChat(false)} onSelected={chat => { if (chat.folder) void createProject('', '', undefined, undefined, undefined, chat.folder, chat) }} />}
+      {/* New project is a dialog again (owner, 28 Nov: "it was simpler ux"); an empty project then shows its start page. */}
+      {createOpen && <CreateCrewWizard
+        onClose={() => { if (!creating) setCreateOpen(false) }}
+        onCreate={(title, purpose, runsOn, onboarding, rootPath, localChat) => createProject(title, purpose, undefined, runsOn, onboarding, rootPath, localChat)}
+        allowExistingFolder={startCanChooseFolder}
+        submitting={creating}
+        error={createError}
+      />}
       <ConfirmationDialog
         isOpen={deleteCandidate !== null}
         onClose={() => { if (!deletingProjectId) setDeleteCandidate(null) }}
@@ -1967,20 +1966,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         {showSchedulesOverview && !showProviders && <SchedulesPage />}
         {adminPage && !showProviders && <AdminPages />}
         <div className={showProviders || showSchedulesOverview || adminPage ? 'hidden' : 'h-full'}>
-          {createOpen ? (
-            // New project (#4439): no dialog, just the message box; the first message creates the project.
-            <div className="flex h-full flex-col">
-              <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-sm font-semibold">New project
-                {selected && <button type="button" disabled={creating} onClick={() => setCreateOpen(false)} className="ml-auto rounded-md px-2 py-1 text-xs font-normal text-muted-foreground hover:bg-muted hover:text-foreground">Cancel</button>}
-              </div>
-              <div className="min-h-0 flex-1">
-                <StartPage mode="new" place={startPlace} canChooseFolder={startCanChooseFolder} submitting={creating} error={createError}
-                  servers={startServers}
-                  onSend={(text: string, folder: StartFolder, server?: StartServer) => { void createProject('', '', undefined, undefined, undefined, folder, undefined, text, server?.id) }}
-                  onImportChat={startCanChooseFolder ? () => setPickingStartChat(true) : undefined} />
-              </div>
-            </div>
-          ) : !selected ? (
+          {!selected ? (
             <>{sessionsLoading ? <div className="grid h-full place-items-center text-sm text-muted-foreground"><Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />Loading your work…</div> : !createOpen && <ProjectsEntry />}</>
           ) : error ? (
             <div className="grid h-full place-items-center p-6 text-center text-sm text-destructive">{error}</div>
@@ -2032,9 +2018,9 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                       </div>
                   ) : (
                     <div className={projectReady && !welcome ? 'h-full' : 'grid h-full place-items-center p-6 text-center text-sm text-muted-foreground'}>
-                      {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; requestFor('start') }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => requestFor('start')}>Start a chat</button></div></div> : projectReady ? <StartPage mode="project" place={startPlace} projectId={selected?.id} projectFolder={importAvailability?.projectId === selected?.id ? importAvailability.folder : undefined} canChooseFolder={false}
+                      {projectReady && welcome ? <div className="w-full self-start"><ProjectWelcome page={welcome} onStart={text => { pendingStart.current = text; requestFor('start') }} /><div className="mx-auto max-w-2xl px-6 text-left"><button type="button" className="rounded-md bg-primary px-4 py-2 text-primary-foreground" onClick={() => requestFor('start')}>Start a chat</button></div></div> : projectReady ? <StartPage place={startPlace} projectId={selected?.id} projectFolder={importAvailability?.projectId === selected?.id ? importAvailability.folder : undefined}
                         onSend={text => { pendingSend.current = text; requestFor('start') }}
-                        onImportChat={importAvailability?.projectId === selected?.id && importAvailability.chats ? () => requestFor('importChat') : startCanChooseFolder ? () => setPickingStartChat(true) : undefined}
+                        onImportChat={importAvailability?.projectId === selected?.id && importAvailability.chats ? () => requestFor('importChat') : undefined}
                         onImportMcp={importAvailability?.projectId === selected?.id && importAvailability.mcp ? () => requestFor('importMcp') : undefined}
                         onDiscoverSkills={() => requestFor('skills')} /> : <span><Loader2 className="mr-2 inline h-4 w-4 animate-spin" />Opening project…</span>}
                     </div>
