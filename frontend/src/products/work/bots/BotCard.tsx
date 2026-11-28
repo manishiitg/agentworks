@@ -14,8 +14,9 @@ export function botSummary(state: BotState | null): string {
   if (!state) return 'Share it for others to use'
   if (!state.on) return 'Off · share it for others to use'
   const who = state.everyone ? 'Anyone at the company' : state.people.length + state.teams.length === 0 ? 'Nobody chosen yet' : [...state.people.map(person => person.name), ...state.teams.map(id => state.team_choices.find(team => team.team_id === id)?.name ?? 'a Team')].join(', ')
+  // Ask is always on, so it is counted: "0 functions" read as if the bot could do nothing (owner, 28 Nov).
   const count = state.functions.length
-  return `On · ${who} · ${count} function${count === 1 ? '' : 's'}`
+  return `On · ${who} · ${count ? `Ask + ${count} function${count === 1 ? '' : 's'}` : 'Ask only'}`
 }
 
 const needs = (fn: BotFunction) => Object.entries(fn.input_schema?.properties ?? {}).map(([name, field]) => field.description ? `${name}: ${field.description}` : name).join(', ')

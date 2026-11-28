@@ -223,7 +223,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           event.stopPropagation()
           trigger.current = event.currentTarget
           if (at?.view === 'details' && botFirst) dismiss(); else open('details', true)
-        }}><BotIcon aria-hidden="true" className="h-3.5 w-3.5" />Bot · {bot.functions}</button>}
+        }}><BotIcon aria-hidden="true" className="h-3.5 w-3.5" />{bot.functions ? `Bot · ${bot.functions}` : 'Bot'}</button>}
     </span>
     {at && createPortal(<>{sheet && <div ref={backdrop} aria-hidden="true" className="fixed inset-0 z-[100] bg-black/40" onClick={event => { event.stopPropagation(); dismiss() }} />}
     <div ref={box} tabIndex={clickToOpen ? -1 : undefined} role="dialog" aria-label={at.view === 'automations' ? `Automations for ${info.name}` : at.view === 'sharing' ? `Sharing for ${info.name}` : info.name} style={sheet ? undefined : { top: at.top, left: at.left }} onClick={event => event.stopPropagation()}

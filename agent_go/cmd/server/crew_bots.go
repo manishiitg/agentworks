@@ -423,6 +423,17 @@ func applyCrewBotChange(ctx context.Context, caller string, change crewBotChange
 	}
 	if !existed {
 		bot = crewBot{Maker: caller, Since: time.Now().UTC().Format(time.RFC3339), Icon: "🤖"}
+		// A new bot offers every function the project offers (owner, 28 Nov); the maker unticks what they keep back.
+		if change.Functions == nil {
+			target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
+			if functions, err := readCrewFunctions(ctx, target); err == nil {
+				for _, fn := range offeredCrewFunctions(ctx, target, functions) {
+					if fn.Name != "ask" && !containsID(bot.Functions, fn.Name) {
+						bot.Functions = append(bot.Functions, fn.Name)
+					}
+				}
+			}
+		}
 	}
 	if change.Icon != nil {
 		icon := strings.TrimSpace(*change.Icon)
@@ -557,12 +568,25 @@ type crewTabBot struct {
 
 func crewTabBotFor(bot crewBot, viewer string) *crewTabBot {
 	count := len(bot.Functions)
-	fns := fmt.Sprintf("%d function%s", count, map[bool]string{true: "", false: "s"}[count == 1])
+	fns := crewBotOffersLine(count)
 	who := "Shared as a bot"
 	if viewer == bot.Maker {
 		who = crewBotAudienceLine(bot)
 	}
 	return &crewTabBot{Functions: count, Line: who + " · " + fns}
+}
+
+// crewBotOffersLine is what a bot offers: Ask is always on, so a bot with no functions ticked still answers questions
+// (owner, 28 Nov: "0 functions" read as if it could do nothing).
+func crewBotOffersLine(functions int) string {
+	switch functions {
+	case 0:
+		return "Ask only"
+	case 1:
+		return "Ask + 1 function"
+	default:
+		return fmt.Sprintf("Ask + %d functions", functions)
+	}
 }
 
 // crewBotAudienceLine is who may use the bot, in a few words.
