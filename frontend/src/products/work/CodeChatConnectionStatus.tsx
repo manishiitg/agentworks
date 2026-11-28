@@ -20,7 +20,7 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   }))
   const endpoint = laptopSettingsEndpoint(profile, project)
   const [computer, setComputer] = useState('')
-  const [folder, setFolder] = useState('')
+  const [folders, setFolders] = useState<string[]>([])
   const [thisMac, setThisMac] = useState('')
   // A server project opened in the Mac app: say "on this Mac" when the chat uses this Mac (owner, 27 Nov).
   const connection = remoteProjectConnection(project)
@@ -44,7 +44,7 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
     setComputer('')
     const load = () => {
       if (endpoint) void api.get<{ device_id: string; folders: { path: string }[] }>(endpoint, { skipSessionContext: true })
-        .then(result => { if (active) { setComputer(result.data.folders?.length ? result.data.device_id : ''); setFolder(result.data.folders?.[0]?.path || '') } }).catch(() => { if (active) setComputer('') })
+        .then(result => { if (active) { setComputer(result.data.folders?.length ? result.data.device_id : ''); setFolders((result.data.folders || []).map(item => item.path)) } }).catch(() => { if (active) setComputer('') })
     }
     load()
     window.addEventListener('crew-laptop-settings-changed', load)
@@ -53,8 +53,10 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   if (!computer) return null
   // Opens the Crew's Local laptop panel, the way the model name opens Models.
   const where = computer === thisMac ? 'this Mac' : computer
-  const short = folder.replace(/^\/Users\/[^/]+/, '~')
-  const label = folder ? `Using ${short} on ${where}` : `Laptop · ${where}`
-  return <button type="button" title={`${label}. Open the laptop settings.`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-laptop', { detail: { projectId: project } }))}
+  const short = folders.map(path => path.replace(/^\/Users\/[^/]+/, '~'))
+  // Every linked folder counts, not only the first (#4535): "~/Downloads + 1", all of them on hover.
+  const label = short.length ? `Using ${short[0]}${short.length > 1 ? ` + ${short.length - 1}` : ''} on ${where}` : `Laptop · ${where}`
+  const title = short.length > 1 ? `Using ${short.join(', ')} on ${where}` : label
+  return <button type="button" title={`${title}. Open the laptop settings.`} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-laptop', { detail: { projectId: project } }))}
     className="inline-flex h-7 min-w-0 max-w-64 items-center gap-1.5 rounded px-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground"><Laptop className="h-3.5 w-3.5 shrink-0" /><span className="truncate max-md:sr-only">{label}</span></button>
 }

@@ -139,7 +139,7 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 			return nil
 		}
 		if entry.IsDir() {
-			if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
+			if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil && !staleWorktreeLink(p) {
 				// Every checkout in the project counts, worktrees included:
 				// agents often edit a worktree while running from the project root.
 				dirs = append(dirs, p)
@@ -169,6 +169,26 @@ func (s Store) turnPaths(ctx context.Context, stats *CaptureStats) (dirs, loose 
 		loose = nil
 	}
 	return
+}
+
+// staleWorktreeLink: dir's .git is a linked-worktree file whose Git record is gone (its main checkout pruned or
+// deleted it). Git cannot read it, so treating it as a checkout marked every reply's file changes incomplete
+// (GitHub #4535); its files are ordinary files now and are copied like any other folder's.
+func staleWorktreeLink(dir string) bool {
+	raw, err := os.ReadFile(filepath.Join(dir, ".git"))
+	if err != nil || len(raw) > 4096 {
+		return false
+	}
+	target, ok := strings.CutPrefix(strings.TrimSpace(string(raw)), "gitdir:")
+	if !ok {
+		return false
+	}
+	target = strings.TrimSpace(target)
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, target)
+	}
+	_, err = os.Stat(target)
+	return os.IsNotExist(err)
 }
 
 // turnCandidatePaths uses index/path metadata rather than status, whose refresh

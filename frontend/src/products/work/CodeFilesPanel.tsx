@@ -194,7 +194,8 @@ export function CodeLocalFilesSettings({ sessionId, thisMac }: { sessionId?: str
         <span className="min-w-0 flex-1 text-xs"><span className="block break-all font-medium">{path}</span><span className="text-muted-foreground">Same repo as this project, found on this Mac</span></span>
         <Button size="sm" disabled={busy} onClick={() => void addFolder(path, 'write')}>Link, Read &amp; write</Button>
       </div>)}
-      {cliUpdateNeeded(device, latest) && <p role="status" className="text-xs">Update once: <code>agentworks update</code>, then <code>agentworks stop</code> and <code>agentworks start</code>. Choose folders here.</p>}
+      {/* This Mac is the Mac app itself, which updates itself: the CLI update line is for other computers (#4535). */}
+      {settings.device_id !== mac?.device_id && cliUpdateNeeded(device, latest) && <p role="status" className="text-xs">Update once: <code>agentworks update</code>, then <code>agentworks stop</code> and <code>agentworks start</code>. Choose folders here.</p>}
       {settings.folders.map(folder => <div key={folder.id} className="flex items-center gap-2 rounded-md border border-border p-3">
         <Folder className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1 break-all text-xs">{folder.path}</span>
         <select aria-label={`Access for ${folder.path}`} value={folder.access} disabled={busy || !device} className="rounded border border-border bg-background p-1 text-xs" onChange={event => void save({ ...settings, folders: settings.folders.map(item => item.id === folder.id ? { ...item, access: event.target.value as LaptopFolder['access'] } : item) })}>

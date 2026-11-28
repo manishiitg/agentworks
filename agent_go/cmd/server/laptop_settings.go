@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -202,4 +203,37 @@ func currentLaptopFolder(owner, root, device, id string, write bool) ([]localfil
 // The browser cannot keep an unbounded request open while the laptop is offline.
 func contextWithLaptopTimeout(r *http.Request) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(r.Context(), 20*time.Second)
+}
+
+// laptopFoldersPrompt lists, in the chat's instructions, the folders on the person's own computer that this turn can use
+// (GitHub #4535: a turn had both linked folders and their tools, yet the agent said none were attached and offered to
+// attach one, because only server folders were listed). Rebuilt every turn from the saved settings, so it always
+// matches the panel; empty when the turn has no computer connection.
+func laptopFoldersPrompt(claims *UserClaims, target *laptopConnectionTarget, root string) string {
+	if claims == nil || target == nil || !target.valid() {
+		return ""
+	}
+	settings, err := readLaptopSettings(claims.UserID, root)
+	if err != nil || settings.DeviceID != target.DeviceID || len(settings.Folders) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("Folders on the person's own computer, linked for this project (Folders on this Mac in the side panel):\n")
+	write := false
+	for _, folder := range settings.Folders {
+		access := "Read"
+		if folder.Access == "write" {
+			access, write = "Read & write", true
+		}
+		fmt.Fprintf(&b, "- `%s` (%s)\n", folder.Path, access)
+	}
+	b.WriteString("Reach them only with these tools (find them with search_tools if they are not listed): list_local_files, copy_local_file_to_project")
+	if write {
+		b.WriteString(", write_local_file")
+		if settings.Commands {
+			b.WriteString(", execute_local_shell_command")
+		}
+	}
+	b.WriteString(". Your file and shell tools work on the server, not on this computer. To add or change folders, use manage_laptop_access.\n")
+	return b.String()
 }
