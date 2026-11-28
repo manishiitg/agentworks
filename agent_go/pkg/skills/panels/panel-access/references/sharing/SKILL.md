@@ -5,9 +5,23 @@ admitted tools and exact people/agents returned by the server. A link grants no
 access by itself. The server decides what the caller can change; a guide does
 not grant permission or another person's tab controls.
 
-On a project on the server, people who build it (co-owners) or work in it through chat with your setup (Users, with locked files) are not Share: use `crew_owners` and read `references/owners/SKILL.md`.
+## A project on the server
 
-The project menu has two rows (the old Share row split in two):
+Sharing is three separate things; the right menu shows them as **People**, **Bots** and **Dashboard**:
+
+- **People** work *in* the project: co-owners build it with the main owner, Users work in it through chat with its
+  setup (locked files). Use `crew_owners` and read `references/owners/SKILL.md`.
+- **Bots** are its agents that others *use* without joining, each in their own private chat, with the functions the
+  maker ticks. Use `bots` and read `references/bots/SKILL.md`.
+- **Dashboard** is shared by its link, like a Drive file: people added plus general access (`share_dashboard` with
+  `access` restricted or company, and `emails`; a public copy for anyone with the link is the main owner's
+  `set_dashboard_public_link`). Someone with only the dashboard opens its pages and their data, never the project,
+  its chats, agents or files, and gets no Ask or function buttons. To let people ask or use the project without
+  joining, share an agent as a bot.
+
+## A project on a Mac
+
+The project menu has two rows:
 
 - **Team:** the people who work on this project with you. People lists **Works with
   me** and **Dashboards only**, then the Team's agents and the shared folder.
@@ -51,8 +65,8 @@ on/off setting. A declared Action runs with its owner's configured access; that
 access is not given to its caller. Free-text Ask runs as the attributed caller
 under the existing Run rules. Read `panel-dashboard` before creating Actions.
 
-Respect the server's fixed controls: a published Main agent stays shared, and
-the last shared agent cannot be turned off while sharing requires one. Explain
+Respect the server's fixed controls: the last shared agent cannot be turned off
+while sharing requires one. Explain
 the returned reason rather than bypassing it through another API. Audience and
 agent selection are rechecked for reads, sends and queued delivery.
 

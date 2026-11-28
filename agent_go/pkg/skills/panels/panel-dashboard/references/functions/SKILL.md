@@ -6,6 +6,8 @@ Use the listed `functions` actions in chat or MCP. List before choosing or chang
 
 Call with `project`, `function` and `input`. Keep the returned `call_id`; read `functions action=status` until it settles. Answer a pending question with `action=reply` only when you are its caller. Current project members may read shared results. A saved or accepted call is not proof of completion.
 
-Builders use `action=define` to create or replace a `definition` (name, description, action, fixed input and exposed input names for workflows/scripts, or a caller schema for project message actions); `action=delete` removes it. Project actions send instructions to the function's named tab, or use a fresh chat when declared. Workflow Actions run the project’s single Python workflow with shared typed inputs, optional saved settings and fixed values selecting its task path. A project-owned executable saves its chat destination, Main by default, for updates. Preserve stable identity and caller restrictions when changing a function.
+Builders use `action=define` to create or replace a `definition` (name, description, action, fixed input and exposed input names for workflows/scripts, or a caller schema for project message actions); `action=delete` removes it. Project actions send instructions to the function's named tab, or use a fresh chat when declared. Workflow Actions run the project’s single Python workflow with shared typed inputs, optional saved settings and fixed values selecting its task path. A project-owned executable saves the chat that gets its updates (the project's default agent unless one is named). Preserve stable identity and caller restrictions when changing a function.
+
+Functions are also what a bot offers: tick them on the bot to let other people's agents call them through it (`panel-access`, bots procedure).
 
 Read [calls and authoring](references/calls.md) for schemas, results, retry IDs and existing internal bindings.
