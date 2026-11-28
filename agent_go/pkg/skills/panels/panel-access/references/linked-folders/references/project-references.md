@@ -33,6 +33,10 @@ For a tagged project:
 - A dashboard: `dashboard action=get from_project=...`, then `action=create`
   here with the same files, then publish. Its data does not come along: the
   page's queries need the same tables in this project's database.
+- Database tables: `database action=describe` and `action=query` with
+  `from_project=<its workspace_path>` (from `workspace action=references_list`),
+  then recreate the schema and rows here with `database action=mutate`. Raw
+  `db/db.sqlite` files are protected by the sandbox.
 - Other files: `files action=copy`.
 - For schedules, current enablement and latest runs, send the project an explicit message and request its `automations action=list` result where offered. Your own `automations action=list` is
   bound to this project, not the tagged one.
