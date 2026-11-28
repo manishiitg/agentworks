@@ -43,12 +43,14 @@ func chatAccessRank(mode string) int {
 	return 1
 }
 
-// chatAutoReviewSupported: the programs whose own reviewer was checked to work under AgentWorks' sandbox. Codex's
-// reviewer only sees approval requests its own sandbox raises, and inside ours it raises none.
+// chatAutoReviewSupported: the programs whose own reviewer works for AgentWorks chats. Codex's reviewer only sees what
+// its own sandbox refuses, so an Auto-review Codex turn runs under Codex's sandbox instead of ours (#4602,
+// codexcli_auto_review.go).
 func chatAutoReviewSupported(provider string) bool {
 	key := chatProviderKey(provider)
 	return key != "" && (key == chatProviderKey(string(llmproviders.ProviderClaudeCode)) || key == chatProviderKey(string(llmproviders.ProviderCursorCLI)) ||
-		key == chatProviderKey(string(llmproviders.ProviderAgyCLI))) // agy's own Auto mode (acpcli AutoReviewMode)
+		key == chatProviderKey(string(llmproviders.ProviderAgyCLI)) || // agy's own Auto mode (acpcli AutoReviewMode)
+		key == chatProviderKey(string(llmproviders.ProviderCodexCLI)))
 }
 
 // chatAccessEffective is the mode a turn of this program on this host gets from the saved one: Auto-review only on a
@@ -102,7 +104,7 @@ func chatAccessViewFor(saved, provider string, personalMac bool) *chatAccessView
 	case !personalMac:
 		auto.Why = "Auto-review runs only on your Mac for now."
 	case !auto.Available:
-		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code, Cursor or Antigravity."
+		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code, Codex, Cursor or Antigravity."
 	}
 	view.Options = []chatAccessOption{{Mode: "project", Available: true}, auto}
 	return view

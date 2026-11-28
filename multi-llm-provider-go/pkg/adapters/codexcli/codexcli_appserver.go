@@ -172,7 +172,7 @@ func (c *CodexCLIAdapter) appProcessFingerprint(opts *llmtypes.CallOptions, cwd 
 	if opts.CLISecurity != nil && opts.CLISecurity.Confined() {
 		sandboxCWD = cwd
 	}
-	raw, err := json.Marshal(map[string]any{"sandbox_cwd": sandboxCWD, "binary": bin, "size": info.Size(), "mtime": info.ModTime().UnixNano(), "argv": codexAppLaunchArgs(opts), "security": opts.CLISecurity, "mcp_reads": reads, "env": environment})
+	raw, err := json.Marshal(map[string]any{"sandbox_cwd": sandboxCWD, "binary": bin, "size": info.Size(), "mtime": info.ModTime().UnixNano(), "argv": codexAppLaunchArgs(opts), "security": opts.CLISecurity, "auto_review": codexAutoReview(opts), "mcp_reads": reads, "env": environment})
 	if err != nil {
 		return [32]byte{}, err
 	}
@@ -201,7 +201,10 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 	// A nil stderr goes directly to the null device (no copying goroutine
 	// or inherited stderr pipe can delay process cleanup). Protocol errors
 	// arrive on stdout; stderr may contain credentials.
-	if llmtypes.NormalizeCLISecurityMode(policyMode(opts)) != llmtypes.CLISecurityModeCompatibility && !opts.CLISecurity.Confined() {
+	// An Auto-review turn runs Codex outside our sandbox, under its own
+	// (codexcli_auto_review.go).
+	autoReview := codexAutoReview(opts)
+	if !autoReview && llmtypes.NormalizeCLISecurityMode(policyMode(opts)) != llmtypes.CLISecurityModeCompatibility && !opts.CLISecurity.Confined() {
 		stop()
 		return nil, fmt.Errorf("Codex app-server requires enforced CLI confinement")
 	}
@@ -212,7 +215,10 @@ func (c *CodexCLIAdapter) launchAppServer(ctx context.Context, opts *llmtypes.Ca
 		stop()
 		return nil, err
 	}
-	cleanupSandbox, err := clisandbox.LandlockCmd(opts.CLISecurity, cmd, cwd, mcpReads, nil)
+	cleanupSandbox := func() {}
+	if !autoReview {
+		cleanupSandbox, err = clisandbox.LandlockCmd(opts.CLISecurity, cmd, cwd, mcpReads, nil)
+	}
 	if err != nil {
 		stop()
 		return nil, err
@@ -318,6 +324,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		owner = "codex-app-" + codexRandomHex(12)
 	}
 	ctx = llmtypes.ScopeCodingAgentQuestions(ctx, "codex-cli", owner)
+	opts = codexWithAutoReview(ctx, owner, opts)
 	persistent := codexPersistentInteractiveFromOptions(opts)
 	codexAppSessions.Lock()
 	s := codexAppSessions.sessions[owner]
@@ -541,6 +548,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		}
 		threadConfig["features.default_mode_request_user_input"] = true
 		params := map[string]any{"cwd": cwd, "sandbox": sandbox, "approvalPolicy": approval, "developerInstructions": system, "config": threadConfig}
+		codexAutoReviewThreadParams(params, threadConfig, opts, cwd)
 		model := codexOptionString(opts, MetadataKeyCodexModel)
 		if model == "" {
 			model = c.modelID
