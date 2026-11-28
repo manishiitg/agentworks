@@ -307,6 +307,10 @@ func (api *StreamingAPI) handleMacProjectBots(w http.ResponseWriter, r *http.Req
 // read and call go to the servers this Mac is signed in to, as the person; making a bot (get, set) happens in a project
 // on a server.
 func (api *StreamingAPI) registerMacProjectBotsTool(reg definitionToolRegistrar, gate *productToolGate, claims *UserClaims, projectID string) error {
+	var added []string
+	if _, rec, err := macProjectRecord(projectID); err == nil {
+		added = rec.AddedBots
+	}
 	var description string
 	var props map[string]any
 	externalBotsDefinition(func(_ string, d string, _ bool, _ bool, p map[string]any, _ ...string) {
@@ -314,7 +318,7 @@ func (api *StreamingAPI) registerMacProjectBotsTool(reg definitionToolRegistrar,
 	})
 	owner := claims.UserID
 	gate.Declare(externalBotsTool)
-	return reg.RegisterCustomToolWithTimeout(externalBotsTool, description+" This project is on your Mac: its bots come from the servers this Mac is signed in to; add and remove default to this project.", map[string]any{"type": "object", "properties": props, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
+	return reg.RegisterCustomToolWithTimeout(externalBotsTool, description+" This project is on your Mac: its bots come from the servers this Mac is signed in to; add and remove default to this project."+crewAddedBotsLine(added), map[string]any{"type": "object", "properties": props, "required": []string{"action"}}, func(ctx context.Context, args map[string]any) (string, error) {
 		str := func(key string) string { return strings.TrimSpace(externalArg(args, key)) }
 		project := str("crew_id")
 		if project == "" {

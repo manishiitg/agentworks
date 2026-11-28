@@ -26,6 +26,8 @@ type crewTabSetup struct {
 	// StartsOnOwn: at least one of Automations is on.
 	StartsOnOwn bool                `json:"starts_on_own"`
 	Automations []crewTabAutomation `json:"automations"`
+	// Bot is set when the agent is shared as a bot (#4545): its header shows a Bot chip.
+	Bot *crewTabBot `json:"bot,omitempty"`
 }
 
 // crewTabAutomation is one schedule, watcher or webhook that starts an agent, worded for its card.
@@ -157,6 +159,7 @@ type crewTabSetupSource struct {
 	ctx         context.Context
 	mainKey     string // validated once by the request builder
 	automations []crewTabAutomation
+	bots        map[string]crewBot // the project's bots by agent key; only a project on the server has them
 }
 
 // crewTabSetupSourceFor never waits (owner, 6 Nov: the agent card got slower). The Team tab is read again on every
@@ -182,7 +185,15 @@ func crewTabSetupSourceFor(ctx context.Context, t crewTeam, twin bool) crewTabSe
 		return crewTabSetupSource{ctx: ctx}
 	}
 	actions := runningServerAPI.projectActions
-	return crewTabSetupSource{ctx: ctx, automations: crewTabAutomationsCached(ctx, t.ProjectID, true, func(ctx context.Context) ([]crewTabAutomation, bool) {
+	var bots map[string]crewBot
+	if records, err := defaultProjectOwners().All(); err == nil && crewLivesOnServer(t.ProjectID) {
+		for _, rec := range records {
+			if rec.Product == crewProfileID && rec.ProjectID == t.ProjectID {
+				bots = rec.Bots
+			}
+		}
+	}
+	return crewTabSetupSource{ctx: ctx, bots: bots, automations: crewTabAutomationsCached(ctx, t.ProjectID, true, func(ctx context.Context) ([]crewTabAutomation, bool) {
 		return actions.crewAutomationsByTab(ctx, t.OwnerID, t.ProjectID), true
 	})}
 }
@@ -199,6 +210,9 @@ func (src crewTabSetupSource) setup(t crewTeam, a crewTeamAgent, person, viewer 
 	}
 	if t.On && inTeam && person == viewer {
 		out.Reach = "team"
+	}
+	if bot, ok := src.bots[a.ChatKey]; ok && a.ChatKey != "" {
+		out.Bot = crewTabBotFor(bot, viewer)
 	}
 	var next *time.Time
 	if person == t.OwnerID {
