@@ -118,7 +118,7 @@ func (api *StreamingAPI) collectContinueOnline(ctx context.Context, userID, macP
 	if err != nil || !found || roots.Owner != userID {
 		return nil, fmt.Errorf("only your own chat in your own project can continue online")
 	}
-	plan := &continueOnlinePlan{Chat: firstNonEmptyTrimmed(record.Title, "Main"), macProject: macProject, Repos: []continueOnlineRepo{}, Files: []continueOnlineFile{}, Setup: []continueOnlineFile{}, Skipped: []string{}}
+	plan := &continueOnlinePlan{Chat: firstNonEmptyTrimmed(record.Title, "Agent"), macProject: macProject, Repos: []continueOnlineRepo{}, Files: []continueOnlineFile{}, Setup: []continueOnlineFile{}, Skipped: []string{}}
 	plan.macName = continueOnlineProjectName(ctx, record.WorkspacePath, roots)
 	plan.sourceKey = chatKey
 	data, err := ReadChatHistoryConversation(userID, record.SessionID, record.WorkspacePath)

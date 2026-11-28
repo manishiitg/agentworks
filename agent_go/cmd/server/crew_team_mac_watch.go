@@ -242,7 +242,7 @@ func readPersonMacTabsNow(ctx context.Context, person, project, pair string, wit
 	present := map[string]bool{}
 	for i, row := range rows {
 		_, id, ok := strings.Cut(row.ConversationKey, codeChatSideMarker)
-		if row.IsMain {
+		if row.IsDefaultAgent {
 			id, ok = macMainTab, true
 		}
 		if ok {

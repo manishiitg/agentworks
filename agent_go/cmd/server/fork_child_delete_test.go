@@ -44,7 +44,7 @@ func TestChatDeletesOnlyItsOwnStillNestedFork(t *testing.T) {
 		t.Fatalf("parent could not delete its own nested fork: %s", reason)
 	}
 	for name, tc := range map[string]codeChat{
-		"main":                 {Key: "beta", IsMain: true, OwnerID: owner.UserID},
+		"main":                 {Key: "beta", IsDefaultAgent: true, OwnerID: owner.UserID},
 		"itself":               chat(parent),
 		"another agent's fork": chat(other),
 		"someone else's tab":   {Key: child, OwnerID: "teammate"},

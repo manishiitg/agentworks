@@ -26,15 +26,15 @@ const (
 )
 
 type codeChat struct {
-	TeamAgentID string // Team identity; Key remains the native conversation binding.
-	OwnerID     string
-	IsMain      bool
-	Key         string // conversation key: <projectId> or <projectId>:chat:<id>
-	ID          string // "main" or the side chat's id
-	Name        string
-	Purpose     string
-	Examples    []string
-	SessionID   string
+	TeamAgentID    string // Team identity; Key remains the native conversation binding.
+	OwnerID        string
+	IsDefaultAgent bool
+	Key            string // conversation key: <projectId> or <projectId>:chat:<id>
+	ID             string // "main" or the side chat's id
+	Name           string
+	Purpose        string
+	Examples       []string
+	SessionID      string
 	// Hidden: the person took this tab off their strip (Close keeps it as a hidden agent). Lists leave it out.
 	Hidden    bool
 	UpdatedAt string
@@ -97,11 +97,11 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 		}
 		chat := codeChat{OwnerID: tab.OwnerID, Key: record.ConversationKey, SessionID: record.SessionID, UpdatedAt: record.UpdatedAt}
 		chat.ID = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
-		chat.IsMain = tab.OwnerID == userID && (record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, userID))
+		chat.IsDefaultAgent = tab.OwnerID == userID && (record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, userID))
 		chat.Name = "Chat " + chat.ID
-		if chat.IsMain {
+		if chat.IsDefaultAgent {
 			chat.Name = "Main chat"
-		} else if record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, tab.OwnerID) || strings.HasPrefix(chat.ID, "root-") {
+		} else if record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(manifest.ID, tab.OwnerID) || strings.HasPrefix(chat.ID, "root-") {
 			chat.Name = "Main" // another person's Main, by its name in the Team (never a raw root id)
 		}
 		// The person's or the agent's own name wins over the chat's automatic title.
@@ -142,7 +142,7 @@ func (api *StreamingAPI) codeChatsFor(ctx context.Context, userID, sessionID, wo
 					if !agent.InTeam {
 						continue
 					}
-					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsMain: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
+					project.Chats = append(project.Chats, codeChat{TeamAgentID: agent.ID, ID: agent.ID, Key: crewTeamNativeChatKey(manifest.ID, person.UserID, agent), OwnerID: person.UserID, Name: agent.Name, Purpose: agent.Purpose, Examples: agent.Examples, SessionID: agent.sessionID, IsDefaultAgent: person.UserID == userID && crewTeamMainAgent(team, userID, agent.ChatKey)})
 				}
 			}
 		}
@@ -269,7 +269,7 @@ func agentRolePrompt(ctx context.Context, userID, profileID, conversationKey, wo
 			}
 		}
 	}
-	defaultName := "Main"
+	defaultName := "Agent"
 	if tab != "" {
 		defaultName = "Chat"
 	}
@@ -302,10 +302,10 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 			// Names as the header shows them (owner, 10 Nov: a person's chip said "admin" while this list said their
 			// email, and a person's Main said its saved title "<email> · Builder", so "ask admin" found no one).
 			name := chat.Name
-			if chat.IsMain {
+			if chat.IsDefaultAgent {
 				name = "Main"
 			}
-			item := map[string]interface{}{"id": chat.ID, "name": name, "is_main": chat.IsMain, "owner_id": chat.OwnerID, "owner_name": firstNonEmptyTrimmed(chat.OwnerName, shareOwnerLabel(chat.OwnerID)), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
+			item := map[string]interface{}{"id": chat.ID, "name": name, "is_default_agent": chat.IsDefaultAgent, "owner_id": chat.OwnerID, "owner_name": firstNonEmptyTrimmed(chat.OwnerName, shareOwnerLabel(chat.OwnerID)), "can_write": chat.OwnerID == userID, "working": api.conversationTurnOccupied(chat.SessionID)}
 			if chat.Teammate {
 				// A teammate's agent runs on their side: its work state is not known here.
 				item["teammate"] = true
@@ -359,7 +359,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return jsonOut(map[string]interface{}{"chats": describe(project)})
 			}},
-		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). The name is this chat's own (its tab), for Main too; it never renames the project (only set_work_identity does, when the person explicitly asks to rename the project). An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
+		{"set_my_agent_identity", "Set this agent's own name and purpose (a few words and one short line; either alone keeps the other) so the other agents and people know what it is for. When its own person asks, also save this agent's own standing instructions (instructions). The name is this chat's own (its tab); it never renames the project (only set_work_identity does, when the person explicitly asks to rename the project). An agent can be shared only with a purpose. Only this agent and the person change them; another agent can ask this one to.", map[string]interface{}{
 			"type": "object", "properties": map[string]interface{}{
 				"name":            map[string]interface{}{"type": "string", "maxLength": productAgentNameMaxRunes},
 				"examples":        agentPurposeExamplesSchema(),
@@ -563,7 +563,7 @@ func (api *StreamingAPI) registerCodeChatTools(registrar definitionToolRegistrar
 				}
 				return api.sendForkTask(ctx, userID, destProject, messages, task, own, out), nil
 			}},
-		{"delete_project_chat", "Delete a fork or helper tab you made, while it is still under you in the person's left menu, when its work is done or the person asks. Call once without confirmation to see what goes, then again with the returned confirmation. Its saved chats and queued messages are deleted; project files and other agents stay. Refused for Main, for yourself, for a tab you did not make, and for one the person has moved out from under you in the left menu (then the person removes it in the app).", map[string]interface{}{
+		{"delete_project_chat", "Delete a fork or helper tab you made, while it is still under you in the person's left menu, when its work is done or the person asks. Call once without confirmation to see what goes, then again with the returned confirmation. Its saved chats and queued messages are deleted; project files and other agents stay. Refused for the project's default agent, for yourself, for a tab you did not make, and for one the person has moved out from under you in the left menu (then the person removes it in the app).", map[string]interface{}{
 			"type": "object", "required": []string{"chat"}, "properties": map[string]interface{}{
 				"chat":         map[string]interface{}{"type": "string", "description": "The fork's or helper's id or name from sessions action=list."},
 				"confirmation": map[string]interface{}{"type": "string", "description": "The confirmation from the first call; omit it to preview."},

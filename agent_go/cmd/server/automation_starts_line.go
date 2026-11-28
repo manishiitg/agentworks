@@ -24,7 +24,7 @@ func automationStartsWorkflowLine(inputPreset string) string {
 
 // automationStartsMessageLine is "Sends a message to <agent>".
 func automationStartsMessageLine(agent string) string {
-	return "Sends a message to " + firstNonEmptyTrimmed(agent, "Main")
+	return "Sends a message to " + firstNonEmptyTrimmed(agent, "the default agent")
 }
 
 // workflowScheduleStartsLine is the line for a schedule or webhook saved on a workflow. A Crew workflow always runs
@@ -72,7 +72,7 @@ func productScheduleStartsLine(job productScheduleJob) string {
 	case strings.TrimSpace(job.ProjectID) == "":
 		return automationStartsMessageLine(job.Profile.Name)
 	}
-	agent := firstNonEmptyTrimmed(job.AgentName, "Main")
+	agent := firstNonEmptyTrimmed(job.AgentName, "the default agent")
 	if job.Schedule.New {
 		return automationStartsMessageLine(agent) + " · a new chat each time"
 	}
@@ -81,7 +81,7 @@ func productScheduleStartsLine(job productScheduleJob) string {
 	}
 	chatKey := scheduleChatKey(job)
 	if chatKey == "" {
-		return automationStartsMessageLine("Main") + " · Main chat"
+		return automationStartsMessageLine("the default agent")
 	}
 	name := projectScheduleAgentName(job, chatKey)
 	return automationStartsMessageLine(name) + " · " + name
@@ -94,9 +94,6 @@ func projectScheduleAgentName(job productScheduleJob, chatKey string) string {
 		for _, chat := range chats {
 			if chat.Record.ConversationKey != chatKey {
 				continue
-			}
-			if chat.Record.IsMainChat {
-				return "Main"
 			}
 			return firstNonEmptyTrimmed(chat.Identity.Name, job.AgentName, "Chat "+id)
 		}

@@ -129,7 +129,7 @@ func (api *StreamingAPI) notifyChatFor(ctx context.Context, job notifyJob) notif
 		return chat
 	}
 	chat.project = crewResourceProjectID(key)
-	chat.agent = "Main"
+	chat.agent = "Default agent"
 	chat.route = notifyChatRoute(chat.project, key)
 	if isSideChatConversationKey(key) {
 		chat.agent = firstNonEmptyTrimmed(tab.Identity.Name, "An agent")

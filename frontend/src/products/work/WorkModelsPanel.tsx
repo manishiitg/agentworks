@@ -76,7 +76,7 @@ export function WorkModelsPanel({
       setChatModels(models); setModelChats(listed); setChatModelsReady(true)
       // Main is optional; only the server's explicit role selects it.
       const target = initialModelTarget === projectId
-        ? listed.find(chat => chat.is_main)?.conversation_key
+        ? listed.find(chat => chat.is_default_agent)?.conversation_key
         : initialModelTarget
       setModelTarget(listed.some(chat => chat.conversation_key === target) ? target! : '')
     }).catch(() => { if (!cancelled) setChatModelError('Chat models could not be loaded. Reopen Models to retry.') })

@@ -137,7 +137,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 				if !ok {
 					return plan, fmt.Errorf("invalid linked %s record", collection)
 				}
-				objects, fields, reassign := agentRemovalRecordRefs(record, collection, key, project, key == binding.ProjectMainChatKey)
+				objects, fields, reassign := agentRemovalRecordRefs(record, collection, key, project, key == binding.ProjectDefaultAgentKey)
 				if len(objects) == 0 {
 					continue
 				}
@@ -274,7 +274,7 @@ func (api *StreamingAPI) planCrewAgentRemoval(ctx context.Context, caller string
 		}
 	}
 	sort.Slice(plan.preview.Destinations, func(i, j int) bool { return plan.preview.Destinations[i].Key < plan.preview.Destinations[j].Key })
-	fmt.Fprintln(hash, binding.ProjectMainChatKey)
+	fmt.Fprintln(hash, binding.ProjectDefaultAgentKey)
 	plan.preview.Confirmation = hex.EncodeToString(hash.Sum(nil))
 	return plan, nil
 }

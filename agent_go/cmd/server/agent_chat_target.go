@@ -104,7 +104,7 @@ func (api *StreamingAPI) resolveAgentChatTarget(ctx context.Context, target trig
 			return target, err
 		}
 		target.CrewOwner = owner
-		target.Chat = &codeChat{OwnerID: owner, ID: record.ConversationKey, Key: record.ConversationKey, Name: "Builder", SessionID: record.SessionID, IsMain: true}
+		target.Chat = &codeChat{OwnerID: owner, ID: record.ConversationKey, Key: record.ConversationKey, Name: "Builder", SessionID: record.SessionID, IsDefaultAgent: true}
 		return target, nil
 	}
 	if chatID != "" {

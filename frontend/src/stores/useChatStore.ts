@@ -485,7 +485,7 @@ export interface ChatTab {
     agentProfileTabOwnerID?: string
     agentProfileTabOwnerName?: string
     agentProfileTabCanWrite?: boolean
-    agentProfileIsMainChat?: boolean
+    agentProfileIsDefaultAgent?: boolean
     // Where the person put this side tab in the strip, as the server saved it (1 is first; 0/absent = not placed).
     agentProfileTabPosition?: number
     // Pinned side tabs stay on the strip (the server saved it; absent means pinned).

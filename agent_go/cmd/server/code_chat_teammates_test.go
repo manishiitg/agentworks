@@ -23,7 +23,7 @@ func TestMacTeammateChatsListsTeammatesAgentsFromTheTeamServer(t *testing.T) {
 		externalJSON(w, []AgentProfileSideChat{
 			{ConversationKey: "server-crew:chat:mine", SessionID: "s1", Name: "Mine", CanWrite: true, TabOwnerID: "owner"},
 			{ConversationKey: "server-crew:chat:theirs", SessionID: "s2", Name: "Their agent", TabOwnerID: "teammate", TabOwnerName: "Teammate", Purpose: "Reviews"},
-			{ConversationKey: "server-crew:chat:root-teammate", SessionID: "s3", Name: "Main", TabOwnerID: "teammate", IsMain: true},
+			{ConversationKey: "server-crew:chat:root-teammate", SessionID: "s3", Name: "Main", TabOwnerID: "teammate", IsDefaultAgent: true},
 		})
 	}))
 	defer server.Close()

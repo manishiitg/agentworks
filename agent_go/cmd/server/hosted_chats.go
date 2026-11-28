@@ -146,7 +146,7 @@ func ownCodeChats(ctx context.Context, userID string) []hostedChat {
 			continue
 		}
 		for _, record := range chats {
-			chat, name := "main", "Main chat"
+			chat, name := "main", "Default agent"
 			if record.ConversationKey != manifest.ID {
 				chat = strings.TrimPrefix(record.ConversationKey, manifest.ID+codeChatSideMarker)
 				name = "Chat " + chat

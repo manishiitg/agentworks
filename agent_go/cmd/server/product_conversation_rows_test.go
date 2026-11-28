@@ -90,7 +90,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	manifest, _ := json.Marshal(productProjectManifest{MainChatKey: mainKey})
+	manifest, _ := json.Marshal(productProjectManifest{DefaultAgentKey: mainKey})
 	files[crew+"/product.json"] = string(manifest)
 	rowsFor := func(user string) conversationRegistryRows {
 		return conversationRegistryRows{db: db, namespace: productConversationRegistryPath(user)}
@@ -109,7 +109,7 @@ func TestConversationRegistryRowsMatchExistingGetterRules(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, chat := range chats {
-			if chat.IsMainChat != (chat.ConversationKey == mainKey) {
+			if chat.IsDefaultAgent != (chat.ConversationKey == mainKey) {
 				t.Fatal("bare root overrides manifest Main")
 			}
 		}

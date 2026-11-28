@@ -33,7 +33,7 @@ func TestCrewTeamMemberAccessChangesOnlyOwnParticipation(t *testing.T) {
 	memberMain := crewOwnerDefaultChatKey("member-access", "member")
 	ownerMain := crewOwnerDefaultChatKey(team.ProjectID, team.OwnerID)
 	documents.mu.Lock()
-	documents.files["Crew/member-access/product.json"] = `{"schema_version":1,"product":"work","id":"member-access","main_chat_key":"` + ownerMain + `"}`
+	documents.files["Crew/member-access/product.json"] = `{"schema_version":1,"product":"work","id":"member-access","default_agent_key":"` + ownerMain + `"}`
 	documents.mu.Unlock()
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): {ProfileID: crewProfileID, ConversationKey: key, SessionID: "member-session"},
 		productConversationRegistryEntryKey(crewProfileID, memberMain): {ProfileID: crewProfileID, ConversationKey: memberMain, SessionID: "member-main-session"}}}

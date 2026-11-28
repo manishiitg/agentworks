@@ -14,8 +14,8 @@ func TestProjectMainResolutionNeverCreatesOrRepairsAnAgent(t *testing.T) {
 			store, files := memoryProductConversationStore()
 			ctx := context.Background()
 			root := "_users/u/Chats/Work/projects/crew"
-			binding := productConversationBinding{ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectMainAddress: true}
-			metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: "work", Title: "Crew", MainChatKey: key})
+			binding := productConversationBinding{ResourceID: "crew", WorkspacePath: root, ManifestPath: root + "/product.json", ProjectDefaultAddress: true}
+			metadata, _ := json.Marshal(productProjectManifest{ID: "crew", Product: "work", Title: "Crew", DefaultAgentKey: key})
 			files[binding.ManifestPath] = string(metadata)
 			doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
 				"work/crew:chat:existing": {ProfileID: "work", ConversationKey: "crew:chat:existing", ConversationID: "existing", SessionID: "saved-session", WorkspacePath: root},
@@ -59,16 +59,18 @@ func TestFixedMainRecordRejectsProtectedOrForeignChats(t *testing.T) {
 
 func TestStableProjectChatCannotBeReboundByAStaleBrowserSession(t *testing.T) {
 	profile := routeTestProfile("work", true, "")
-	binding := productConversationBinding{ConversationKey: "crew:chat:reviewer", ResourceID: "crew", ProjectMainChatKey: "crew:chat:reviewer"}
+	binding := productConversationBinding{ConversationKey: "crew:chat:reviewer", ResourceID: "crew", ProjectDefaultAgentKey: "crew:chat:reviewer"}
 	if shouldRebindWorkConversation(profile, binding, ProductConversationRecord{SessionID: "current"}, "previous", true) {
 		t.Fatal("stale browser retargeted a stable chat ID")
 	}
 }
 
-func TestSharedCallerLegacyRootKeepsItsOwnMainRole(t *testing.T) {
+// The owner's default-agent pointer names the owner's chat; it never makes a Run person's own chats the default
+// agent, and an old project root is not the default agent on its own (only the saved pointer says so).
+func TestOwnerDefaultAgentPointerNeverMarksRunPersonChats(t *testing.T) {
 	store, files := memoryProductConversationStore()
 	root := "_users/owner/Chats/Work/projects/crew"
-	files[root+"/product.json"] = `{"product":"work","id":"crew","main_chat_key":"crew:chat:owners-main"}`
+	files[root+"/product.json"] = `{"product":"work","id":"crew","default_agent_key":"crew:chat:owners-main"}`
 	doc := productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{
 		"work/crew":           {ProfileID: "work", ConversationKey: "crew", SessionID: "run-person-main", WorkspacePath: root},
 		"work/crew:chat:mine": {ProfileID: "work", ConversationKey: "crew:chat:mine", SessionID: "run-person-side", WorkspacePath: root},
@@ -81,8 +83,22 @@ func TestSharedCallerLegacyRootKeepsItsOwnMainRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, chat := range chats {
-		if chat.IsMainChat != (chat.SessionID == "run-person-main") {
+		if chat.IsDefaultAgent {
 			t.Fatalf("owner pointer changed Run person's role: %+v", chat)
+		}
+	}
+}
+
+// A project saved before #4688 kept its default agent as main_chat_key; reading it must keep that agent (one-off
+// migration until every server has rewritten its projects).
+func TestProjectManifestReadsOldDefaultAgentKey(t *testing.T) {
+	for _, tc := range []struct{ saved, want string }{
+		{`{"id":"p","main_chat_key":"p:chat:old"}`, "p:chat:old"},
+		{`{"id":"p","main_chat_key":"p:chat:old","default_agent_key":"p:chat:new"}`, "p:chat:new"},
+	} {
+		var m productProjectManifest
+		if err := json.Unmarshal([]byte(tc.saved), &m); err != nil || m.DefaultAgentKey != tc.want || m.ID != "p" {
+			t.Fatalf("%s: got %q id=%q err=%v, want %q", tc.saved, m.DefaultAgentKey, m.ID, err, tc.want)
 		}
 	}
 }

@@ -30,7 +30,7 @@ func (api *StreamingAPI) crewOpeningAgent(r *http.Request, profile agentprofiles
 		var agents []sharedCrewAgent
 		agents, err = crewShareAgents(r.Context(), user, crew.Binding.WorkspacePath, false)
 		for _, agent := range agents {
-			choices = append(choices, AgentProfileSideChat{ConversationKey: agent.ChatID, Position: agent.tab.Identity.Position, IsMain: agent.tab.Record.IsMainChat})
+			choices = append(choices, AgentProfileSideChat{ConversationKey: agent.ChatID, Position: agent.tab.Identity.Position, IsDefaultAgent: agent.tab.Record.IsDefaultAgent})
 		}
 		sort.SliceStable(choices, func(i, j int) bool {
 			a, b := choices[i].Position, choices[j].Position
@@ -63,7 +63,7 @@ func (api *StreamingAPI) crewOpeningAgent(r *http.Request, profile agentprofiles
 		return "", fmt.Errorf("Choose an available agent in this project.")
 	}
 	for _, choice := range choices {
-		if choice.IsMain {
+		if choice.IsDefaultAgent {
 			return choice.ConversationKey, nil
 		}
 	}

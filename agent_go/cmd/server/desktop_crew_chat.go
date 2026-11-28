@@ -36,7 +36,7 @@ func (api *StreamingAPI) macCrewAgents(ctx context.Context, claims *UserClaims, 
 	main := AgentProfileSideChat{Name: "Main"}
 	own := all[:0]
 	for _, tab := range all {
-		if tab.IsMain {
+		if tab.IsDefaultAgent {
 			main = tab
 			continue
 		}
@@ -160,7 +160,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 		type tabRow struct {
 			crewTeamMessagePreview
 			crewMacTabUsage
-			IsMain          bool   `json:"is_main,omitempty"`
+			IsDefaultAgent  bool   `json:"is_default_agent,omitempty"`
 			ConversationKey string `json:"conversation_key"`
 			ConversationID  string `json:"conversation_id"`
 			Name            string `json:"name"`
@@ -176,7 +176,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 				use.Commits = commits // the project folder's commits, once per answer
 				use.CommitsDay, use.CommitsWeek = commitCounts[0], commitCounts[1]
 			}
-			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], crewMacTabUsage: use, IsMain: metadata && tab.IsMain, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
+			rows = append(rows, tabRow{crewTeamMessagePreview: previews[tab.ConversationKey], crewMacTabUsage: use, IsDefaultAgent: metadata && tab.IsDefaultAgent, ConversationKey: tab.ConversationKey, ConversationID: tab.ConversationID, Name: tab.Name, Purpose: tab.Purpose, Position: tab.Position, Pinned: tab.Pinned, ForkedFrom: tab.ForkedFrom})
 		}
 		data, _ := json.Marshal(rows)
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
@@ -236,7 +236,7 @@ func (api *StreamingAPI) runDesktopCrewChat(ctx context.Context, project, pair s
 	method, path := http.MethodGet, "/api/sessions/"+conversation.SessionID
 	switch call.Operation {
 	case "resolve":
-		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsMainChat: conversation.IsMainChat, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
+		data, _ := json.Marshal(AgentProfileConversationResponse{TabOwnerID: claims.UserID, CanWrite: true, IsDefaultAgent: conversation.IsDefaultAgent, ConversationID: conversation.ConversationID, ConversationKey: conversation.ConversationKey, SessionID: conversation.SessionID, Provider: conversation.Provider, ModelID: conversation.ModelID, ReasoningEffort: conversation.ReasoningEffort})
 		log.Printf("[CREW_CHAT_RELAY] local project=%s operation=resolve session=%s conversation=%s request=%s source=%s", project, conversation.SessionID, conversation.ConversationID, call.ID, crewChatRequestSource(call.Source))
 		return crewChatResult{ID: call.ID, Status: 200, Body: data}
 	case "send":
@@ -317,7 +317,7 @@ func desktopCrewOwnTabs(ctx context.Context, claims *UserClaims, profile agentpr
 		if tab.OwnerID != claims.UserID || hiddenFromTabStrip(record.ConversationKey) {
 			continue
 		}
-		main := record.IsMainChat || record.ConversationKey == crewOwnerDefaultChatKey(project, claims.UserID)
+		main := record.IsDefaultAgent || record.ConversationKey == crewOwnerDefaultChatKey(project, claims.UserID)
 		side, isSide := strings.CutPrefix(record.ConversationKey, project+codeChatSideMarker)
 		if !main && (!isSide || !crewMacTabID(side)) {
 			continue

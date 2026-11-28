@@ -115,7 +115,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   }, [addMode])
   // Main is listed, renamed, moved, hidden and removed like any agent (owner, 25 Nov, #4046: Main is not special).
   const listedByKey = useMemo(() => new Map(listed.map(chat => [chat.conversation_key, chat])), [listed])
-  const mainListed = useMemo(() => listed.find(chat => chat.is_main), [listed])
+  const mainListed = useMemo(() => listed.find(chat => chat.is_default_agent), [listed])
   const listedFor = (tab: ChatTab) => (tab.metadata?.agentProfileConversationKey ? listedByKey.get(tab.metadata.agentProfileConversationKey) : undefined) ?? (tab.tabId === canonicalTabId ? mainListed : undefined)
   const ownedListed = listed.filter(chat => chat.can_write !== false)
   const sideChats = tabs.filter(tab => tab.tabId !== canonicalTabId && !tab.metadata?.isViewOnly)
@@ -160,12 +160,12 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     // The person's own online agent names its project, so it reads apart from this Mac's agents (#4121).
     const online = tab.metadata?.agentProfileOnlineProject
     if (online) return `${sideChatName(tab)} · ${online.name}`
-    return compactOwnerChatName(tab.tabId === canonicalTabId ? listedFor(tab)?.name || 'Main' : sideChatName(tab), owner)
+    return compactOwnerChatName(tab.tabId === canonicalTabId ? listedFor(tab)?.name || 'Agent' : sideChatName(tab), owner)
   }
   // The purpose icon, for the tab's owner only (owner, 3 Nov): it fills the chat box; the agent saves the line itself.
   const purposeOf = (tab: ChatTab): string | undefined => {
     // Main's purpose is its own chat's, like any agent's (owner, 25 Nov, #4046: a project has no description).
-    const chat = tab.tabId === canonicalTabId ? listed.find(row => row.is_main) : listedFor(tab)
+    const chat = tab.tabId === canonicalTabId ? listed.find(row => row.is_default_agent) : listedFor(tab)
     return chat && chat.can_write !== false && isAgentTab(tab) ? chat.purpose || '' : undefined
   }
   const activeTab = tabs.find(tab => tab.tabId === activeTabId)
@@ -366,7 +366,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const crewAgents: CrewAgentRow[] = surface === 'work' && placeProject ? menuOrder.map((tab, index): CrewAgentRow => {
     const chat = listedFor(tab)
     const mine = canControl(tab)
-    const main = tab.tabId === canonicalTabId || chat?.is_main === true
+    const main = tab.tabId === canonicalTabId || chat?.is_default_agent === true
     const face = agentFace(tab)
     return {
       key: tab.metadata?.agentProfileConversationKey, forkedFrom: chat?.forked_from, lastMessageAt: chat?.last_message_at,
@@ -388,7 +388,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // Listed agents without a tab keep the same saved hiding and position when they open.
   const openListedSet = new Set(tabs.map(listedFor).filter((chat): chat is AgentProfileSideChat => Boolean(chat)))
   const closedListed = surface === 'work' && placeProject ? listed.filter(chat => !openListedSet.has(chat)) : []
-  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ owner: chat.can_write === false ? ownerShortName(chat.tab_owner_name || '') || 'Teammate' : undefined, forkedFrom: chat.forked_from, inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_main), teamShare: chat.can_write === true ? teamShareFor(chat.conversation_key, !!chat.is_main) : undefined, key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
+  const closedAgents: CrewClosedAgent[] = closedListed.map(chat => ({ owner: chat.can_write === false ? ownerShortName(chat.tab_owner_name || '') || 'Teammate' : undefined, forkedFrom: chat.forked_from, inTeam: chat.can_write===true && inTeamFor(chat.conversation_key,!!chat.is_default_agent), teamShare: chat.can_write === true ? teamShareFor(chat.conversation_key, !!chat.is_default_agent) : undefined, key: chat.conversation_key, name: workSideChatDisplayName(chat.name), purpose: chat.purpose, examples: chat.examples,
     sidebarHidden: chat.can_write !== false && chat.pinned === false, sidebarOrder: sidebarOrder.get(chat.conversation_key),
     open: () => (onReopen ? onReopen(chat) : onOpen(chat.name)).catch(cause => { useChatStore.getState().addToast(cause instanceof Error ? cause.message : 'Could not open this agent.', 'error') }) }))
   const crewKey = JSON.stringify([placeProject, projectName, sideChatsHere, opening, canImportChat, canDiscoverSkills, ownedListed.map(chat => chat.conversation_key), closedAgents.map(agent => [agent.key, agent.owner, agent.name, agent.purpose, agent.inTeam, agent.teamShare, agent.sidebarHidden, agent.sidebarOrder]), crewAgents.map(agent => [agent.tabId, agent.key, agent.forkedFrom, agent.lastMessageAt, agent.inTeam, agent.teamShare, agent.place, agent.shortcut, agent.name, agent.ownerId, agent.owner, agent.sidebarHidden, agent.sidebarOrder, Boolean(agent.actions?.setSidebarHidden), agent.info?.onRemove ? 1 : 0, agent.actions?.rename ? 1 : 0, agent.asking, agent.activity, agent.info?.purpose, agent.info?.examples, agent.info?.sharedWith, agent.info?.sharedChosen ? 1 : 0, agent.info?.teamShare, agent.info?.lastAsked?.when, agent.info?.setup, agent.info?.presence, agent.info?.onAutomations ? 1 : 0])])

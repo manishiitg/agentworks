@@ -29,7 +29,7 @@ export type WorkRuntimeSelection = {
 }
 
 export type WorkChatOrder = {
-  isMainChat?: boolean
+  isDefaultAgent?: boolean
   position?: number
   conversationKey: string
 }
@@ -43,7 +43,7 @@ export function compareWorkChatOrder(a: WorkChatOrder, b: WorkChatOrder): number
 
 export function workChatTabOrder(tab: ChatTab): WorkChatOrder {
   return {
-    isMainChat: tab.metadata?.agentProfileIsMainChat,
+    isDefaultAgent: tab.metadata?.agentProfileIsDefaultAgent,
     position: tab.metadata?.agentProfileTabPosition,
     conversationKey: tab.metadata?.agentProfileConversationKey || tab.sessionId || tab.tabId,
   }
@@ -70,7 +70,7 @@ export function workSideChatKey(projectId: string, id: string): string {
 
 export function isWorkSideChatTab(tab: ChatTab | undefined, projectId?: string): boolean {
   const key = tab?.metadata?.agentProfileConversationKey
-  if (!tab || !key || tab.metadata?.agentProfileIsMainChat || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
+  if (!tab || !key || tab.metadata?.agentProfileIsDefaultAgent || tab.metadata?.isViewOnly === true || tab.metadata?.agentProfileBuilder === true) return false
   return projectId ? key.startsWith(`${projectId}:chat:`) : /:chat:[^:]+$/.test(key)
 }
 

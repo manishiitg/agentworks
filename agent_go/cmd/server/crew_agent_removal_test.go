@@ -107,7 +107,7 @@ func TestAgentRemovalHTTPPreviewsThenRemovesAndSchedulesRunInOwnChat(t *testing.
 	if err = json.Unmarshal([]byte(f.read(t, externalCommandCrewSettings+"/product.json")), &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.MainChatKey != "" || manifest.SessionID != "" {
+	if manifest.DefaultAgentKey != "" || manifest.SessionID != "" {
 		t.Fatal("deleted Main was retained or replaced")
 	}
 	var saved struct {

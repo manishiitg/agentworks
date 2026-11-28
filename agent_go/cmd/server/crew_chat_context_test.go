@@ -53,7 +53,7 @@ func TestCrewChatContextMCPUsesSameSourceAndDestinationGuardsAndOrdinaryUploads(
 	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	const conversation = "team:chat:root-owner"
 	const session = "context-owner-session"
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"`+conversation+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","default_agent_key":"`+conversation+`"}`)
 	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: conversation, WorkspacePath: externalCommandCrewRoot, SessionID: session, Title: "Owner agent"}
 	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, conversation): record}}); err != nil {
 		t.Fatal(err)

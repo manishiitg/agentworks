@@ -678,7 +678,7 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
       window.dispatchEvent(new Event('close-app-sidebar'))
       return
     }
-    const agent = chat.is_main || chat.can_write === false ? undefined : workConversationAgent(chat.conversation_key)
+    const agent = chat.is_default_agent || chat.can_write === false ? undefined : workConversationAgent(chat.conversation_key)
     const route = { surface: 'work' as const, id: projectId, agent }
     // A project on another connection opens in place too (#3383): its requests go to its own server.
     const existing = Object.values(useChatStore.getState().chatTabs).find(tab => matchesWorkConversation(tab, 'work', projectId, chat.conversation_key))
@@ -688,14 +688,14 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
   }
   const own = chats.filter(chat => chat.can_write !== false)
   // The same setup warning the open project's rows show (the Team tab's reading), without its reach line.
-  const setupOf = (chat: AgentProfileSideChat) => { const setup = agentSetupForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false); return setup && { ...setup, reach: '' as const } }
+  const setupOf = (chat: AgentProfileSideChat) => { const setup = agentSetupForTab(team, chat.conversation_key, !!chat.is_default_agent, chat.can_write !== false); return setup && { ...setup, reach: '' as const } }
   const teammateChats = chats.filter(chat => chat.can_write === false)
   const chatRow = (chat: AgentProfileSideChat) => {
     const session = sessions.find(item => item.session_id === chat.session_id)
-    const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_main, chat.can_write !== false)
+    const teamAgent = teamAgentForTab(team, chat.conversation_key, !!chat.is_default_agent, chat.can_write !== false)
     const share = chat.can_write !== false ? agentTeamShareFromRow(teamAgent) : undefined
     return <ProjectAgentRow key={chat.conversation_key} projectId={projectId} sessionId={chat.session_id} session={session} lastMessageAt={chat.last_message_at} local={connectionId === getRawActiveWorkspaceId()}
-      activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_main ? 'Main' : 'Agent')}
+      activity={teamAgent?.activity} status={teamAgent?.status_label} onOpen={() => open(chat)} name={chat.name || (chat.is_default_agent ? 'Main' : 'Agent')}
       person={chat.can_write === false ? chat.tab_owner_name || 'Teammate' : undefined} inTeam={share ? { on: true, share } : undefined}
       setup={setupOf(chat) || undefined} place={chat.chat_location === 'mac' ? 'mac' : undefined} provider={chat.provider} />
   }
@@ -711,8 +711,8 @@ function ExpandableCrew({ projectId, connectionId, selected, initialOpen, childr
     return result
   }))
   const openKeys = new Set(Object.keys(openPins))
-  const orderedOwn = [...own.filter(chat => chat.is_main), ...own.filter(chat => !chat.is_main)]
-  const isHidden = (chat: AgentProfileSideChat) => !chat.is_main && (openPins[chat.conversation_key] ?? chat.pinned) === false
+  const orderedOwn = [...own.filter(chat => chat.is_default_agent), ...own.filter(chat => !chat.is_default_agent)]
+  const isHidden = (chat: AgentProfileSideChat) => !chat.is_default_agent && (openPins[chat.conversation_key] ?? chat.pinned) === false
   const visible = orderedOwn.filter(chat => !isHidden(chat))
   const hidden = orderedOwn.filter(isHidden)
   // Another network's project has no tabs here: its visible agents stay listed as before.

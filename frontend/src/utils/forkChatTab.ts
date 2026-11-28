@@ -63,7 +63,7 @@ export async function forkChatTab(
     }
     const id = await store.createChatTab(chat.name, {
       ...source.metadata,
-      agentProfileIsMainChat: false, agentProfileBuilder: false,
+      agentProfileIsDefaultAgent: false, agentProfileBuilder: false,
       agentProfileTabPinned: true, agentProfileTabPosition: undefined,
       agentProfileConversationKey: chat.conversation_key, agentProfileConversationId: chat.conversation_id,
       agentProfileEngine: chat.engine, agentProfileModelID: chat.model_id,

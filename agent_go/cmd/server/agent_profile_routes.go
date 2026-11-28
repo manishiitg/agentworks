@@ -103,7 +103,7 @@ type AgentProfileConversationResponse struct {
 	TabOwnerID      string `json:"tab_owner_id,omitempty"`
 	TabOwnerName    string `json:"tab_owner_name,omitempty"`
 	CanWrite        bool   `json:"can_write"`
-	IsMainChat      bool   `json:"is_main_chat,omitempty"`
+	IsDefaultAgent  bool   `json:"is_default_agent,omitempty"`
 	ConversationID  string `json:"conversation_id"`
 	ConversationKey string `json:"conversation_key"`
 	SessionID       string `json:"session_id"`
@@ -728,13 +728,13 @@ func (api *StreamingAPI) handleResolveAgentProfileConversation(w http.ResponseWr
 		writeAgentProfileError(w, http.StatusUnprocessableEntity, err.Error())
 		return
 	}
-	if opener := strings.TrimSpace(input.OpenedFrom); opener != "" && !conversation.IsMainChat {
+	if opener := strings.TrimSpace(input.OpenedFrom); opener != "" && !conversation.IsDefaultAgent {
 		api.startOnOpenerModel(r.Context(), productWorkspaceUserID(r.Context()), profile, productConversationBinding{WorkspacePath: conversation.WorkspacePath, ProjectLLMConfig: conversation.ProjectLLMConfig}, conversation.ConversationKey, opener)
 	}
 	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
 		TabOwnerID: ownerID, TabOwnerName: ownerName, CanWrite: canWrite,
-		IsMainChat:      conversation.IsMainChat,
+		IsDefaultAgent:  conversation.IsDefaultAgent,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
@@ -801,7 +801,7 @@ func (api *StreamingAPI) handleRotateAgentProfileConversation(w http.ResponseWri
 	ownerID, ownerName, canWrite := crewConversationTabAccess(r.Context(), productWorkspaceUserID(r.Context()), profile, conversation)
 	writeAgentProfileJSON(w, http.StatusOK, AgentProfileConversationResponse{
 		TabOwnerID: ownerID, TabOwnerName: ownerName, CanWrite: canWrite,
-		IsMainChat:      conversation.IsMainChat,
+		IsDefaultAgent:  conversation.IsDefaultAgent,
 		ConversationID:  conversation.ConversationID,
 		ConversationKey: conversation.ConversationKey,
 		SessionID:       conversation.SessionID,
@@ -1000,7 +1000,7 @@ func (api *StreamingAPI) resolveAgentProfileConversation(r *http.Request, profil
 			}
 		}
 	}
-	if owned && (record.IsMainChat || binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID)) {
+	if owned && (record.IsDefaultAgent || binding.ConversationKey == crewOwnerDefaultChatKey(binding.ResourceID, userID)) {
 		if identity, e := store.agentIdentity(r.Context(), userID, profile.ID, record.ConversationKey); e == nil && identity.Name == "" {
 			title := crewOwnerDisplayName(userID) + " · Builder"
 			if e = setCodeTabName(r.Context(), userID, record.ConversationKey, title, profile.ID); e != nil {
@@ -1018,7 +1018,7 @@ func shouldRebindWorkConversation(
 	preferredSessionID string,
 	verifiedForWorkspace bool,
 ) bool {
-	if !isProjectProfileID(profile.ID) || !verifiedForWorkspace || binding.ProjectMainChatKey != "" {
+	if !isProjectProfileID(profile.ID) || !verifiedForWorkspace || binding.ProjectDefaultAgentKey != "" {
 		return false
 	}
 	// The base project key is the permanent Builder/current-project slot and is
@@ -1559,7 +1559,7 @@ func (api *StreamingAPI) handleCloseAgentProfileSideChat(w http.ResponseWriter, 
 		writeAgentProfileError(w, http.StatusInternalServerError, "close side chat: "+err.Error())
 		return
 	}
-	if binding.ConversationKey == binding.ProjectMainChatKey && binding.ManifestPath != "" {
+	if binding.ConversationKey == binding.ProjectDefaultAgentKey && binding.ManifestPath != "" {
 		if err := store.writeMainChatPointer(r.Context(), binding.ManifestPath, "", ""); err != nil {
 			writeAgentProfileError(w, http.StatusInternalServerError, err.Error())
 			return

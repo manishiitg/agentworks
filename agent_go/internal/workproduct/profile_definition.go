@@ -297,7 +297,7 @@ func workIdentityFactory(workspaceAPIURL string) agentprofiles.ToolFactory {
 		return agentprofiles.ToolSpec{
 			Name:     "set_work_identity",
 			Category: "work_identity",
-			Description: "Rename this project, or clear its name, only when the user explicitly asks to rename the project. A project has a name and no description (owner, 25 Nov): each agent, Main included, keeps its own name and purpose with set_my_agent_identity, which never renames the project. " +
+			Description: "Rename this project, or clear its name, only when the user explicitly asks to rename the project. A project has a name and no description (owner, 25 Nov): each agent keeps its own name and purpose with set_my_agent_identity, which never renames the project. " +
 				"Store it in product.json, preserve omitted fields, and never invent a name.",
 			Parameters: map[string]interface{}{
 				"type": "object",

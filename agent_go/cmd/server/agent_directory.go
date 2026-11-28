@@ -190,7 +190,7 @@ func listAgentDirectory(ctx context.Context, claims *UserClaims, apis ...*Stream
 						hostedHidden++
 					}
 				}
-				chats = append(chats, map[string]interface{}{"target": bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey), "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_main": tab.Record.IsMainChat, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
+				chats = append(chats, map[string]interface{}{"target": bridgeChatAddress(tab.OwnerID, profileID, id, tab.Record.ConversationKey), "chat_id": tab.Record.ConversationKey, "name": crewDirectoryChatName(tab), "purpose": tab.Identity.Purpose, "examples": tab.Identity.Examples, "owner_name": shareOwnerLabel(tab.OwnerID), "can_write": tab.OwnerID == claims.UserID, "is_default_agent": tab.Record.IsDefaultAgent, "shared_by": crewPersonShortName(tab.OwnerID), "yours": tab.OwnerID == claims.UserID, "function_agent": crewFunctionTabKey(tab.Record.ConversationKey)})
 			}
 			log.Printf("[AGENTBRIDGE] event=directory owner=%s project=%s hosted_listed=%d hosted_hidden=%d", claims.UserID, id, hostedListed, hostedHidden)
 			row["chats"] = chats
@@ -451,7 +451,7 @@ func agentDirectoryHowToCall(rows any) string {
 // crewDirectoryChatName is a chat's name as the header shows it: a person's Main is "Main", never its saved title
 // "<person> · Builder".
 func crewDirectoryChatName(tab crewOwnerChat) string {
-	if tab.Record.IsMainChat {
+	if tab.Record.IsDefaultAgent {
 		return "Main"
 	}
 	return firstNonEmptyTrimmed(tab.Identity.Name, tab.Record.Title, "Main")

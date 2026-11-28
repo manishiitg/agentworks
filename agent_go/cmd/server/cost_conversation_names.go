@@ -12,7 +12,7 @@ import (
 const closedChatTitle = "Closed chat"
 
 // nameCostConversations gives each Crew conversation on a cost page the name people know it by: its tab's name (or
-// "Main chat"), the same name for a tab's earlier chats, or "Closed chat" when the tab is gone. Rows outside Crew
+// "Default agent"), the same name for a tab's earlier chats, or "Closed chat" when the tab is gone. Rows outside Crew
 // chats keep no title and the page falls back to the chat history title.
 func nameCostConversations(ctx context.Context, summary *costledger.Summary) {
 	if summary == nil {
@@ -64,7 +64,7 @@ func costConversationNames(ctx context.Context, store productConversationRegistr
 			return name
 		}
 		if !strings.Contains(entryKey, ":") {
-			return "Main chat"
+			return "Default agent"
 		}
 		return strings.TrimSpace(record.Title)
 	}

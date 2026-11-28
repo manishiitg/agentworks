@@ -223,7 +223,7 @@ func (api *StreamingAPI) workspaceOwnerChats(r *http.Request, user, project stri
 	chats := api.crewChats(r, user, project, binding.WorkspacePath)
 	out := make([]codeChat, 0, len(chats))
 	for _, chat := range chats {
-		out = append(out, codeChat{OwnerID: chat.OwnerID, IsMain: chat.IsMain, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt})
+		out = append(out, codeChat{OwnerID: chat.OwnerID, IsDefaultAgent: chat.IsDefaultAgent, Key: chat.key, ID: chat.ChatID, Name: chat.Name, SessionID: chat.SessionID, UpdatedAt: chat.UpdatedAt})
 	}
 	return out, nil
 }

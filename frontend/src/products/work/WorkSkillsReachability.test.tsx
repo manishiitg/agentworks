@@ -160,7 +160,8 @@ it('keeps the active agent name clickable in both sidebar states even after anot
   expect(details).toBeTruthy()
   await act(async()=>details!.click())
   const dialog=document.querySelector('[role="dialog"]')!
-  expect(dialog.textContent).toContain('Checks the project.')
+  // The card's purpose shows only once the agent is shared with the Team (owner, 28 Nov).
+  expect(dialog.textContent).not.toContain('Checks the project.')
   await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
   expect(document.querySelector('[role="dialog"]')).toBeNull()
  }
@@ -194,8 +195,8 @@ it('opens only enabled automations from the current agent’s header clock',asyn
  expect(clock.title).not.toContain('Shared with team')
  await act(async()=>clock.click())
  const dialog=document.querySelector('[role="dialog"][aria-label="Automations for Helper"]')!
- expect(dialog.textContent).toContain('Daily report · Schedule')
- expect(dialog.textContent).toContain('New issue · Watcher')
+ expect(dialog.querySelector('[aria-label="Schedules"]')?.textContent).toContain('Daily report')
+ expect(dialog.querySelector('[aria-label="Watchers"]')?.textContent).toContain('New issue')
  expect(dialog.textContent).not.toContain('Paused watcher')
  expect(dialog.textContent).not.toContain('Remove agent')
  await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
@@ -281,7 +282,7 @@ it('remembers the Team one-line view per person and Team while keeping the curre
 it('projects sidebar hiding only for owned agents and keeps the selected tab in order', async()=>{
  const names=['main','visible','hidden-first','hidden-second','teammate']
  const tabs=names.map(name=>({tabId:name,name,metadata:{agentProfileId:'work',agentProfileProjectId:'example',agentProfileConversationKey:name,agentProfileTabCanWrite:name!=='teammate',...(name==='teammate'?{agentProfileTabOwnerID:'peer',agentProfileTabOwnerName:'Teammate'}:{})}}))
- const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:tabId!=='teammate',is_main:tabId==='main',pinned:tabId==='visible'}))
+ const listed=tabs.map(({tabId,name})=>({conversation_key:tabId,name,can_write:tabId!=='teammate',is_default_agent:tabId==='main',pinned:tabId==='visible'}))
  const writePreference=vi.fn(async()=>{})
  const page=()=> <ProjectAgentTabs tabs={tabs as React.ComponentProps<typeof ProjectAgentTabs>['tabs']} listed={listed as React.ComponentProps<typeof ProjectAgentTabs>['listed']} canonicalTabId="main" projectName="Example" projectId="example" allowSideChats opening={false} surface="work" onOrder={async()=>{}} onSetSidebarHidden={writePreference} onRename={async()=>{}} onOpen={f.opened} onCloseTab={()=>{}} onSelectTab={()=>{}}/>
  for(const activeTabId of ['visible','hidden-second']){

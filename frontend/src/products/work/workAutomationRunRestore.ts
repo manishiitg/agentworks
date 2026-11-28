@@ -149,7 +149,7 @@ export async function openWorkAutomationRunChat(
     const tabId = sideChat
       ? existing?.tabId || await chatStore.createChatTab(sideChat.name, {
         ...canonical.metadata,
-        agentProfileIsMainChat: false,
+        agentProfileIsDefaultAgent: false,
         agentProfileConversationKey: sideChat.conversation_key,
         agentProfileConversationId: sideChat.conversation_id,
         agentProfileTabOwnerID: sideChat.tab_owner_id,
@@ -196,7 +196,7 @@ export async function openWorkAutomationRunChat(
     )
     const chatTabId = existingChat?.tabId || await chatStore.createChatTab(title, {
       ...canonical.metadata,
-      agentProfileIsMainChat: false,
+      agentProfileIsDefaultAgent: false,
       agentProfileConversationKey: resolved.conversation_key,
       agentProfileConversationId: resolved.conversation_id,
       agentProfileTabCanWrite: true,

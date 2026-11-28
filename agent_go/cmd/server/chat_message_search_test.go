@@ -25,7 +25,7 @@ func TestChatMessageSearchRechecksPrivateAndHiddenChats(t *testing.T) {
 	t.Setenv("MULTI_USER_MODE", "true")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	const key = "team:chat:root-owner"
-	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"`+key+`"}`)
+	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","default_agent_key":"`+key+`"}`)
 	record := ProductConversationRecord{ProfileID: crewProfileID, ConversationKey: key, WorkspacePath: externalCommandCrewRoot, SessionID: "owner-main", Title: "Shared agent"}
 	if err := defaultProductConversationRegistryStore().writeDocument(t.Context(), productConversationRegistryPath("owner"), productConversationRegistryDocument{Entries: map[string]ProductConversationRecord{productConversationRegistryEntryKey(crewProfileID, key): record}}); err != nil {
 		t.Fatal(err)

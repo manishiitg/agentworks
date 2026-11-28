@@ -291,7 +291,7 @@ func bridgeAppRecipientRepliesInOriginalThread(t *testing.T, localOnly bool) {
 		var manifest map[string]any
 		manifestErr := json.Unmarshal([]byte(env.mock.files[root+"/product.json"]), &manifest)
 		if manifestErr == nil {
-			manifest["main_chat_key"] = records[1].ConversationKey
+			manifest["default_agent_key"] = records[1].ConversationKey
 			var raw []byte
 			raw, manifestErr = json.Marshal(manifest)
 			env.mock.files[root+"/product.json"] = string(raw)

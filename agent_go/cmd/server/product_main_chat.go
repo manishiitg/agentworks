@@ -34,14 +34,14 @@ func originalMainChatKey(projectID, conversationID string) string {
 // The text never tells people to create an agent when Main is missing (Team
 // decision, 12 Nov): that wording pushed people to make agents they did not
 // need when they only wanted Main.
-var errChooseProjectAgent = errors.New("Main isn't ready yet. Open this project again in a moment.")
+var errChooseProjectAgent = errors.New("This project isn't ready yet. Open it again in a moment.")
 
 // mainNotReadyError is errChooseProjectAgent for someone who is not the Crew's
 // owner: only the owner opening the Crew sets its Main up.
 type mainNotReadyError struct{ owner string }
 
 func (e mainNotReadyError) Error() string {
-	return e.owner + "'s Main isn't ready yet. Ask " + e.owner + " to open this project once, then try again."
+	return "This project isn't ready yet. Ask " + e.owner + " to open it once, then try again."
 }
 
 func (e mainNotReadyError) Is(target error) bool { return target == errChooseProjectAgent }
@@ -55,7 +55,7 @@ func mainNotReadyFor(userID, ownerID string) error {
 }
 
 func (store productConversationRegistryStore) resolveProjectMainAddress(ctx context.Context, userID string, profile agentprofiles.Profile, binding productConversationBinding) (productConversationBinding, error) {
-	if !isProjectProfileID(profile.ID) || !binding.ProjectMainAddress {
+	if !isProjectProfileID(profile.ID) || !binding.ProjectDefaultAddress {
 		return binding, nil
 	}
 	if binding.ManifestPath == "" {
@@ -75,7 +75,7 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 	if manifest.ID != binding.ResourceID || manifest.Product != profile.ID {
 		return binding, errInvalidMainChat
 	}
-	key := strings.TrimSpace(manifest.MainChatKey)
+	key := strings.TrimSpace(manifest.DefaultAgentKey)
 	if !ordinaryProjectChatKey(manifest.ID, key) {
 		return binding, mainNotReadyFor(userID, manifest.OwnerID)
 	}
@@ -87,8 +87,8 @@ func (store productConversationRegistryStore) resolveProjectMainAddress(ctx cont
 	if !exists || record.ConversationKey != key || !validProjectMainRecord(userID, profile.ID, manifest.ID, binding.WorkspacePath, record) {
 		return binding, mainNotReadyFor(userID, manifest.OwnerID)
 	}
-	binding.ConversationKey, binding.ProjectMainChatKey = key, key
-	binding.ProjectMainAddress = false
+	binding.ConversationKey, binding.ProjectDefaultAgentKey = key, key
+	binding.ProjectDefaultAddress = false
 	binding.AuthoritativeSessionID = ""
 	return binding, nil
 }
@@ -105,7 +105,7 @@ func (store productConversationRegistryStore) writeMainChatPointer(ctx context.C
 	if err := json.Unmarshal([]byte(raw), &manifest); err != nil {
 		return err
 	}
-	manifest["main_chat_key"], _ = json.Marshal(key)
+	manifest["default_agent_key"], _ = json.Marshal(key)
 	manifest["session_id"], _ = json.Marshal(session)
 	encoded, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {

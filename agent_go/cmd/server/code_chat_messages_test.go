@@ -93,7 +93,7 @@ func TestCrewTabsFindEachOtherOnlyForTheOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	project, err := env.api.codeChatsFor(ctx, "owner", conversation.SessionID, binding.WorkspacePath)
-	if err != nil || project.ProfileID != "work" || !project.Self.IsMain || project.Self.ID == codeChatMainName {
+	if err != nil || project.ProfileID != "work" || !project.Self.IsDefaultAgent || project.Self.ID == codeChatMainName {
 		t.Fatalf("owner's Crew chat = %+v, %v", project, err)
 	}
 	reg := &recordingRegistrar{}

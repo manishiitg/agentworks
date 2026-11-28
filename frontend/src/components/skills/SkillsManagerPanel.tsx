@@ -202,7 +202,7 @@ export default function SkillsManagerPanel({
               <div className="flex items-center justify-between gap-2"><span>{name}</span>
                 <button type="button" disabled={readOnly || uninstalling || !defaults} onClick={() => { void uninstall(name) }} className="text-xs text-primary disabled:opacity-50">Remove attachment</button>
               </div>
-              <p className="text-xs text-muted-foreground">{usage[name]?.join(' · ') || 'Main chat'} · Files unavailable</p>
+              <p className="text-xs text-muted-foreground">{usage[name]?.join(' · ') || 'Default agent'} · Files unavailable</p>
             </div>)}</section>}
             </>}
           </div>}
