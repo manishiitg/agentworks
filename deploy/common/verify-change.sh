@@ -12,10 +12,11 @@
 #        not starve or wait on Go slots;
 #      - while any deploy holds its lock (<builds-dir>/.deploys/*), all Go and frontend verifies throttle to slot 1;
 #   3. Go (when agent_go, workspace, mcp-gateway, mcpagent or multi-llm-provider-go changed, or a Verify-Test line exists):
-#      LRU-trims that slot's GOCACHE when over cap (default 3 GiB -> 2 GiB target, keeping 4 slots within the ~12 GiB budget),
-#      build ./..., vet the changed packages (each library in its own module), cross-build and vet the macOS CLI (only when
-#      something outside agent_go/cmd/server changed: the CLI never imports it), then each Verify-Test line as `go test <line> -count=1`
-#      (a line starting with workspace, mcp-gateway, mcpagent or multi-llm-provider-go runs there);
+#      LRU-trims that slot's Linux GOCACHE when over cap (default 3 GiB -> 2 GiB target, keeping 4 slots within the ~12 GiB budget),
+#      builds ./..., vets changed packages (each library in its own module), cross-builds and vets the macOS CLI in parallel
+#      (arm64 + amd64, with its own isolated darwin GOCACHE) only when ./cmd/agentworks or one of its real dependencies changed,
+#      then runs each Verify-Test line as `go test <line> -count=1` (a line starting with workspace, mcp-gateway, mcpagent or
+#      multi-llm-provider-go runs there);
 #   4. website (when frontend/ changed or a Verify-Vitest line exists): links cached node_modules keyed by
 #      sha256(frontend/package-lock.json) (building under lock on cache miss, pruning old hashes, with per-run writable .tmp/.vite),
 #      semantic theme contract, tsc -b, Verify-Vitest files, and `npm run build` with Verify-Frontend-Build: true;
@@ -443,6 +444,56 @@ NM_LINK
   step "frontend node_modules cache $cache_status (${lock_hash:0:12})"
 }
 
+# Decide whether ./cmd/agentworks needs macOS cross-build + vet by intersecting changed files
+# against the actual darwin dependency closure of ./cmd/agentworks (plus go.mod/go.sum).
+# Falls back safely to running the CLI check if `go list` fails or yields no local repo dirs.
+macos_cli_needed() { # changed_file repo_dir -> 0 if needed, 1 to skip
+  local changed="$1" repo="$2"
+  if ! grep -E '^(agent_go|workspace|mcpagent|multi-llm-provider-go)/' "$changed" | grep -qvE '^agent_go/cmd/server/'; then
+    return 1
+  fi
+  if grep -qE '^(agent_go|workspace|mcpagent|multi-llm-provider-go)/(.*/)?go\.(mod|sum)$' "$changed"; then
+    return 0
+  fi
+  local dep_dirs
+  if ! dep_dirs="$(cd "$repo/agent_go" && GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go list -deps -f '{{.Dir}}' ./cmd/agentworks 2>/dev/null)" || [[ -z "$dep_dirs" ]]; then
+    return 0
+  fi
+  python3 - "$changed" "$repo" "$dep_dirs" <<'CLI_DEPS'
+import os, sys
+
+changed_file, repo_root, raw_dirs = sys.argv[1], os.path.realpath(sys.argv[2]), sys.argv[3]
+dep_rel_dirs = set()
+for line in raw_dirs.splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    real = os.path.realpath(line)
+    if real == repo_root:
+        dep_rel_dirs.add("")
+    elif real.startswith(repo_root + os.sep):
+        dep_rel_dirs.add(os.path.relpath(real, repo_root).replace(os.sep, "/"))
+
+if not dep_rel_dirs:
+    # Unrecognized or stubbed `go list` output: fail safe and run the CLI check.
+    raise SystemExit(0)
+
+with open(changed_file, encoding="utf-8") as fh:
+    for raw in fh:
+        path = raw.strip().replace("\\", "/")
+        if not path:
+            continue
+        d = os.path.dirname(path)
+        while True:
+            if d in dep_rel_dirs:
+                raise SystemExit(0)
+            if not d:
+                break
+            d = os.path.dirname(d)
+raise SystemExit(1)
+CLI_DEPS
+}
+
 run_go_checks() {
   export VERIFY_TRACK="go"
   export VERIFY_STEP_LOG="$WORK/step-go.log"
@@ -454,8 +505,21 @@ run_go_checks() {
   # down to target size instead of wiping the whole cache to zero.
   trim_gocache "$GOCACHE" "${VERIFY_GOCACHE_MAX_MIB:-3072}" "${VERIFY_GOCACHE_TARGET_MIB:-2048}"
 
+  local agent_go_build_needed=true
+  if ! grep -qE '^(agent_go|workspace|mcpagent|multi-llm-provider-go)/' "$WORK/changed.txt" \
+     && ! { grep -E '^Verify-Test:' "$WORK/message.txt" || true; } | sed 's/^Verify-Test:[[:space:]]*//' | grep -qvE '^mcp-gateway '; then
+    if grep -q '^mcp-gateway/' "$WORK/changed.txt"; then
+      agent_go_build_needed=false
+    fi
+  fi
+
   cd "$WORK/repo/agent_go"
-  run "go build ./..." go build ./...
+  if [[ "$agent_go_build_needed" == true ]]; then
+    run "go build ./..." go build ./...
+  fi
+  if grep -q '^mcp-gateway/' "$WORK/changed.txt" && [[ -d "$WORK/repo/mcp-gateway" ]]; then
+    run "go build (mcp-gateway) ./..." env VERIFY_DIR="$WORK/repo/mcp-gateway" bash -c 'cd "$VERIFY_DIR" && go build ./...'
+  fi
   pkgs="$(sed -n 's#^agent_go/\(.*\)/[^/]*\.go$#./\1#p' "$WORK/changed.txt" | sort -u)"
   existing=""
   nested_mods=""
@@ -486,16 +550,44 @@ run_go_checks() {
     for pkg in $pkgs; do [[ -d "$WORK/repo/$module/$pkg" ]] && existing="$existing $pkg"; done
     [[ -z "$existing" ]] || run "go vet ($module)$existing" env VERIFY_DIR="$WORK/repo/$module" bash -c 'cd "$VERIFY_DIR" && go vet "$@"' bash $existing
   done
-  # The laptop CLI also builds shared workspace packages (crewroot and others), so a change there builds it too.
-  if grep -E '^(agent_go|workspace|mcpagent|multi-llm-provider-go)/' "$WORK/changed.txt" | grep -qvE '^agent_go/cmd/server/'; then
-    for arch in arm64 amd64; do
-      run "macOS CLI build and vet ($arch)" env GOOS=darwin GOARCH="$arch" CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
-    done
+  # Cross-build and vet the macOS CLI only when ./cmd/agentworks or one of its real dependencies changed,
+  # using a separate darwin GOCACHE so cross-compile objects never evict hot Linux build cache entries.
+  if macos_cli_needed "$WORK/changed.txt" "$WORK/repo"; then
+    local darwin_cache="$CACHE/go-build-darwin-${VERIFY_SLOT:?}"
+    mkdir -p "$darwin_cache"
+    trim_gocache "$darwin_cache" "${VERIFY_DARWIN_GOCACHE_MAX_MIB:-1536}" "${VERIFY_DARWIN_GOCACHE_TARGET_MIB:-1024}"
+    step "macOS CLI build and vet (arm64 + amd64 in parallel)"
+    local arm_out="$WORK/cli-arm64.out" amd_out="$WORK/cli-amd64.out" arm_pid amd_pid arm_rc=0 amd_rc=0
+    (
+      export GOCACHE="$darwin_cache" VERIFY_STEP_LOG="$WORK/step-go-darwin-arm64.log"
+      run "macOS CLI build and vet (arm64)" env GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
+    ) >"$arm_out" 2>&1 &
+    arm_pid=$!
+    (
+      export GOCACHE="$darwin_cache" VERIFY_STEP_LOG="$WORK/step-go-darwin-amd64.log"
+      run "macOS CLI build and vet (amd64)" env GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 bash -c 'go build -o /dev/null ./cmd/agentworks && go vet ./cmd/agentworks ./pkg/agentworksclient'
+    ) >"$amd_out" 2>&1 &
+    amd_pid=$!
+    wait "$arm_pid" || arm_rc=$?
+    wait "$amd_pid" || amd_rc=$?
+    cat "$arm_out"
+    cat "$amd_out"
+    if [[ "$arm_rc" != 0 || "$amd_rc" != 0 ]]; then
+      fail "macOS CLI build and vet"
+    fi
   else
-    echo "macOS CLI skipped: nothing outside agent_go/cmd/server changed in agent_go or workspace (the laptop CLI does not import it)."
+    echo "macOS CLI skipped: no changed file affects ./cmd/agentworks or its dependencies."
   fi
-  (cd "$WORK/repo/workspace" && go build -o "$WORK/landlock-runner" ./cmd/landlock-runner) >/dev/null 2>&1 || true
-  [[ ! -x "$WORK/landlock-runner" ]] || export AGENTWORKS_LANDLOCK_RUNNER="$WORK/landlock-runner"
+
+  local mcp_e2e_regex='^(agent_go/cmd/server/(.*(mcp|oauth|vault|bridge).*|server_routes\.go)|agent_go/pkg/mcpoauth/|mcp-gateway/|mcpagent/(agent/(coding_agents_bridge|connection_session|conversation|session|tool_discovery).*|cmd/mcpbridge/|executor/|mcpcache/|mcpclient/|oauth/)|multi-llm-provider-go/(internal/(clisandbox|slotfs)/|pkg/codingready/))'
+  local auto_mcp_e2e=false
+  if [[ "${VERIFY_SKIP_AUTO_MCP_E2E:-0}" != "1" ]] && grep -qE "$mcp_e2e_regex" "$WORK/changed.txt"; then
+    auto_mcp_e2e=true
+  fi
+  if grep -qE '^Verify-Test:' "$WORK/message.txt" || [[ "$auto_mcp_e2e" == true ]]; then
+    (cd "$WORK/repo/workspace" && go build -o "$WORK/landlock-runner" ./cmd/landlock-runner) >/dev/null 2>&1 || true
+    [[ ! -x "$WORK/landlock-runner" ]] || export AGENTWORKS_LANDLOCK_RUNNER="$WORK/landlock-runner"
+  fi
   # Exercise hosted-folder access outside the launcher's private /tmp grant.
   mkdir -p "$WORK/linux-test-root"
   export AGENTWORKS_LINUX_TEST_ROOT="$WORK/linux-test-root"
@@ -515,8 +607,7 @@ run_go_checks() {
   # file changes, automatically run the fast cross-module MCP E2E suite so cross-layer
   # regressions (such as bridge config <-> slotfs ACLs or gateway upstream recovery)
   # are caught even when a commit omits an explicit Verify-Test line.
-  local mcp_e2e_regex='^(agent_go/cmd/server/(.*(mcp|oauth|vault|bridge).*|server_routes\.go)|agent_go/pkg/mcpoauth/|mcp-gateway/|mcpagent/(agent/(coding_agents_bridge|connection_session|conversation|session|tool_discovery).*|cmd/mcpbridge/|executor/|mcpcache/|mcpclient/|oauth/)|multi-llm-provider-go/(internal/(clisandbox|slotfs)/|pkg/codingready/))'
-  if [[ "${VERIFY_SKIP_AUTO_MCP_E2E:-0}" != "1" ]] && grep -qE "$mcp_e2e_regex" "$WORK/changed.txt"; then
+  if [[ "$auto_mcp_e2e" == true ]]; then
     step "Auto Layer 1 MCP E2E guardrail triggered"
     if [[ -d "$WORK/repo/agent_go/cmd/server" ]]; then
       run "go test (auto MCP E2E: server)" env VERIFY_DIR="$WORK/repo/agent_go" bash -c 'cd "$VERIFY_DIR" && go test ./cmd/server -run "^TestMCPFullChainE2E" -count=1'
