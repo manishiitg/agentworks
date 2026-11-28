@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -1185,9 +1184,6 @@ func (api *StreamingAPI) observeRetainedMainTurnEvent(sessionID string, event ev
 // handled delivery error must be surfaced to the caller; it must never be
 // hidden behind an asynchronous next-turn fallback.
 func (api *StreamingAPI) deliverRetainedMainTerminalInput(ctx context.Context, sessionID, message string) (provider string, handled bool, err error) {
-	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
-		return "", true, errors.New(refusal)
-	}
 	if api == nil {
 		return "", false, nil
 	}

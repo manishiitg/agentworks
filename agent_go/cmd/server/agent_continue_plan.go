@@ -110,7 +110,7 @@ func openPlanItems(row storeevents.Event) []openPlanItem {
 }
 
 func (api *StreamingAPI) continueOpenPlan(sessionID string) {
-	if api.isSessionMarkedStopped(sessionID) || chatTerminalTurnRefusal(sessionID) != "" || api.isSessionBusyForAutoNotification(sessionID) {
+	if api.isSessionMarkedStopped(sessionID) || api.isSessionBusyForAutoNotification(sessionID) {
 		return
 	}
 	api.forwardUnsentAgentTaskFinal(sessionID)

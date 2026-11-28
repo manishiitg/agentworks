@@ -595,11 +595,6 @@ func (api *StreamingAPI) desktopMacSharedAgent(ctx context.Context, claims *User
 	if err != nil {
 		return reply(409, map[string]string{"error": "This agent is unavailable right now."})
 	}
-	if call.Operation != "agent_read" {
-		if notice := chatTerminalTurnRefusal(conversation.SessionID); notice != "" {
-			return reply(409, map[string]string{"error": chatTerminalPeerNotice})
-		}
-	}
 	if call.Operation == "agent_answer" {
 		var input struct {
 			Provider string                           `json:"provider"`

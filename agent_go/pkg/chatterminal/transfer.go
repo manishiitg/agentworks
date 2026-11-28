@@ -40,13 +40,12 @@ func ParseReference(s string) (Reference, error) {
 type Transfer struct {
 	LocalFolder string                  `json:"local_folder,omitempty"`
 	Reference   Reference               `json:"chat"`
-	Receipt     string                  `json:"receipt"`
 	Session     string                  `json:"session"`
 	Bundle      *sessiontransfer.Bundle `json:"native"`
 }
 
 func (t Transfer) Validate() error {
-	if t.Receipt == "" || t.Session == "" || t.Bundle == nil || t.Bundle.Provider != "claude-code" || t.Bundle.Format != "claude-jsonl" || len(t.Bundle.Files) != 1 {
+	if t.Session == "" || t.Bundle == nil || t.Bundle.Provider != "claude-code" || t.Bundle.Format != "claude-jsonl" || len(t.Bundle.Files) != 1 {
 		return fmt.Errorf("this handoff must contain exactly one Claude session")
 	}
 	return t.Bundle.Validate()

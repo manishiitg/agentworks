@@ -1,57 +1,27 @@
 // @vitest-environment happy-dom
-import React, { act } from 'react'
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { TerminalResumeNotice, continueInTerminal, useTerminalResumeState } from './TerminalResume'
+import { TerminalCommandPopup, continueInTerminal, useTerminalCommand } from './TerminalResume'
 
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), toast: vi.fn(), canWrite: true }))
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), toast: vi.fn() }))
 vi.mock('../../services/api', () => ({ default: { get: mock.get, post: mock.post } }))
-vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { own: { metadata: { agentProfileId: 'work', agentProfileConversationKey: 'project:chat:own', agentProfileTabCanWrite: mock.canWrite } } }, addToast: mock.toast }) } }))
+vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ chatTabs: { own: { metadata: { agentProfileId: 'work', agentProfileConversationKey: 'project:chat:own' } } }, addToast: mock.toast }) } }))
 vi.mock('../../utils/chatIdentity', () => ({ captureChatIdentity: () => 'viewer', isChatIdentityCurrent: (identity: string) => identity === 'viewer' }))
 
-beforeEach(() => { mock.get.mockReset(); mock.post.mockReset(); mock.canWrite = true; useTerminalResumeState.setState({ byTab: {}, commandTab: undefined, refused: {} }) })
+beforeEach(() => { mock.get.mockReset(); mock.post.mockReset(); useTerminalCommand.setState({ tabId: undefined, command: undefined }) })
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
 
-it('lets the owner recover a terminal-out chat without attach-back', async () => {
-  mock.get.mockResolvedValue({ data: { out: true, command: 'agentworks resume opaque-chat', notice: 'Continued in terminal' } })
-  mock.post.mockResolvedValue({ data: { out: false } })
-  const host = document.createElement('div'), root = createRoot(host)
-  document.body.append(host)
-  try {
-    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
-    const button = [...host.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === 'Continue here instead')
-    expect(button).toBeTruthy()
-    await act(async () => button!.click())
-    expect(mock.post).toHaveBeenCalledWith('/api/external/v1/chats/terminal', null, { params: { conversation_key: 'project:chat:own', action: 'here' } })
-    expect(useTerminalResumeState.getState().byTab['viewer:own'].out).toBe(false)
-  } finally { await act(async () => root.unmount()); host.remove() }
-})
-
-it('only displays a command and never moves a chat while opening the menu', async () => {
-  mock.get.mockResolvedValue({ data: { out: false, command: 'agentworks resume opaque-chat', notice: '' } })
+// The terminal gets a copy; asking for the command must never change the chat.
+it('only shows the command for a terminal copy and never changes the chat', async () => {
+  mock.get.mockResolvedValue({ data: { command: 'agentworks resume opaque-chat' } })
   await continueInTerminal('own')
   const host = document.createElement('div'), root = createRoot(host)
   document.body.append(host)
   try {
-    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
+    await act(async () => root.render(<TerminalCommandPopup tabId="own" />))
     expect(document.body.textContent).toContain('agentworks resume opaque-chat')
+    expect(mock.get).toHaveBeenCalledWith('/api/external/v1/chats/terminal', { params: { conversation_key: 'project:chat:own', action: 'command' } })
     expect(mock.post).not.toHaveBeenCalled()
-    expect(mock.get.mock.calls.every(([, options]) => options.params.action !== 'fetch')).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
-})
-
-// #3060: a readable chat is not necessarily owned for terminal handoff.
-it('stops terminal-status polling after refusal, including remount', async () => {
-  vi.useFakeTimers()
-  mock.get.mockRejectedValue({ response: { status: 403 } })
-  const host = document.createElement('div'), root = createRoot(host)
-  try {
-    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
-    await act(async () => vi.advanceTimersByTimeAsync(16000))
-    expect(mock.get).toHaveBeenCalledTimes(1)
-    await act(async () => root.render(<TerminalResumeNotice tabId={null} />))
-    await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
-    expect(mock.get).toHaveBeenCalledTimes(1)
-    expect(mock.post).not.toHaveBeenCalled()
-  } finally { await act(async () => root.unmount()); vi.useRealTimers() }
 })
