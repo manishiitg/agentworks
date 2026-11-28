@@ -896,7 +896,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const togglePlanMode = useCallback(() => {
     if (!activeTabId) return
     const on = useChatStore.getState().getTabConfig(activeTabId)?.planMode === true
-    setTabConfig(activeTabId, { planMode: !on, planAwaitingStart: false })
+    setTabConfig(activeTabId, { planMode: !on, planAwaitingStart: false, ...(!on ? { goalMode: false } : {}) })
+  }, [activeTabId, setTabConfig])
+  // The Goal mode (#4604): where the server says the program has its own goal command, the next message is the goal.
+  const goalOn = nativeGoalSupported && !isViewOnly && tabConfig?.goalMode === true
+  const toggleGoalMode = useCallback(() => {
+    if (!activeTabId) return
+    const on = useChatStore.getState().getTabConfig(activeTabId)?.goalMode === true
+    setTabConfig(activeTabId, { goalMode: !on })
   }, [activeTabId, setTabConfig])
 
   // Interactive coding-agent chats use the shared retained tmux path. Prefer
@@ -2140,6 +2147,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
     if (composerTriggerRef.current?.kind === '#') closeComposerPickers()
+    // Goal mode: this message is the goal, sent as the coding app's own /goal (a typed slash command goes as typed).
+    if (goalOn && query.trim() && !query.trim().startsWith('/')) query = `/goal ${query.trim()}`
 
     // Once a chat has a session, every send goes to the server: its durable
     // conversation-turn dispatcher (PLAT-178) decides whether to deliver into
@@ -2205,6 +2214,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
         // A Codex/Cursor plan reply then offers "Start the work" (Claude asks with its own card).
         if (planOn && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
+        if (goalOn && submittedTabId) setTabConfig(submittedTabId, { goalMode: false })
         return
       }
       const reason = getSubmitBlockReason()
@@ -2232,12 +2242,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         latestInputTextRef.current = submittedDraft.inputText
         setLocalInputText(submittedDraft.inputText)
         addToast('Message was not accepted. Your draft was kept.', 'warning')
-      } else if (accepted !== false && planOn && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
+      } else if (accepted !== false && submittedTabId && (planOn || goalOn)) setTabConfig(submittedTabId, { ...(planOn ? { planAwaitingStart: true } : {}), ...(goalOn ? { goalMode: false } : {}) })
     } else {
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
     }
-  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, typedAnswer, chatFileContext, pendingComposerAttachments, requestedSkillId, planOn])
+  }, [routeLiveInputToCLI, tabSessionId, hasSubmitTarget, activeTabId, inputText, onSubmit, clearInputState, closeComposerPickers, setTabConfig, getSubmitBlockReason, addToast, canSubmitImmediately, isUploadingFiles, pendingNativeChoice, typedAnswer, chatFileContext, pendingComposerAttachments, requestedSkillId, planOn, goalOn])
 
   // "Start the work" after a Codex/Cursor plan: Plan goes off and the go-ahead is an ordinary message.
   const startPlannedWork = useCallback(() => {
@@ -3595,8 +3605,9 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* The connected laptop is named after the model, so the line reads: model, then where commands run. */}
                 {/* Like Claude Code's status line: model · effort, then the mode (Auto / Plan; Shift+Tab switches) and how full the context is (#3711). */}
                 {/* The mode menu (#3885): Auto / Auto-review / Plan, and what the chat can reach with Change. */}
-                {(nativePlanSupported || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu key={tabSessionId || activeTabId || 'chat-mode'} sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
-                  plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork} />}
+                {(nativePlanSupported || (nativeGoalSupported && !isViewOnly) || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu key={tabSessionId || activeTabId || 'chat-mode'} sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
+                  plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork}
+                  goal={nativeGoalSupported && !isViewOnly ? { on: goalOn } : undefined} onGoalToggle={toggleGoalMode} />}
                 {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}
