@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 )
 
@@ -501,11 +502,41 @@ func (api *StreamingAPI) previewNewProjectChats(w http.ResponseWriter, r *http.R
 		return
 	}
 	sessions, partial := listLocalNativeSessions(r.Context(), root, sources, nil)
+	if root == "" {
+		sessions = withoutAgentWorksFolders(sessions)
+	}
 	if r.URL.Query().Get("native_id") != "" {
 		writeLocalProjectPreview(w, r, sessions)
 		return
 	}
 	writeAgentProfileJSON(w, 200, map[string]any{"sessions": sessions, "partial": partial})
+}
+
+// withoutAgentWorksFolders drops chats AgentWorks itself ran in its own data and project folders from the every-folder
+// list: they are not the person's work to import, and their folders have internal names (#4491).
+func withoutAgentWorksFolders(sessions []localProjectNativeSession) []localProjectNativeSession {
+	var roots []string
+	if state, err := workflowCLIStateRoot(); err == nil {
+		roots = append(roots, filepath.Dir(state))
+	}
+	if docs := strings.TrimSpace(fsutil.WorkspaceDocsRoot()); docs != "" && filepath.IsAbs(docs) {
+		roots = append(roots, filepath.Clean(docs))
+	}
+	kept := sessions[:0]
+	for _, session := range sessions {
+		inside := false
+		for _, root := range roots {
+			// The Mac's disk ignores letter case: the chat may name the folder in other capitals.
+			if rel, err := filepath.Rel(strings.ToLower(root), strings.ToLower(filepath.Clean(session.Folder))); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			kept = append(kept, session)
+		}
+	}
+	return kept
 }
 
 // localNativeChatName returns the name the AI program shows for this chat: for Claude the latest /rename

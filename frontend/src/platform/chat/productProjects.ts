@@ -253,6 +253,8 @@ export async function createProductProject<P extends string>(options: {
   selectedSkills?: readonly string[]
   initialFiles?: Readonly<Record<string, string>>
   runtimeManifestName?: string
+  /** Make it on another of this Mac's connections (a server), which picks its model (#4491). */
+  connection?: string
 }): Promise<ProductProject<P>> {
   const title = options.title.trim()
   const description = options.description.trim()
@@ -261,10 +263,10 @@ export async function createProductProject<P extends string>(options: {
       name: title, purpose: description, root_path: options.rootPath, first_message: options.firstMessage, icon: options.identity?.icon,
       llm_config: options.llmConfig,
       selected_skills: options.selectedSkills, files: options.initialFiles,
-    })
+    }, options.connection)
     const project = parseProductProjectManifest(JSON.stringify(created.product_manifest), created.workspace_path, options.product)
     if (!project || project.id !== created.id) throw new Error('The new project could not be opened. Reload your projects to find it.')
-    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings, existing: created.existing }
+    return { ...applyRuntimeManifest(project, JSON.stringify(created.runtime_manifest)), filesPath: created.files_path, creationWarnings: created.warnings, existing: created.existing, ...(options.connection ? { connectionId: options.connection } : {}) }
   }
   // Personal products retain their existing creation path. Projects
   // have already returned through server-owned creation above.

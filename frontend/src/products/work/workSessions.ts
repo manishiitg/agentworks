@@ -43,7 +43,18 @@ export async function loadWorkSessions(product: ProjectProductConfig = CREW_PROD
   return sessions
 }
 
-export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, rootPath?: string, firstMessage?: string): Promise<WorkSession> {
+export async function createWorkSession(title: string, description: string, icon?: string, product: ProjectProductConfig = CREW_PRODUCT, runsOn?: WorkLLMSelection, rootPath?: string, firstMessage?: string, connection?: string): Promise<WorkSession> {
+  // On a server (#4491) the server picks the model, as it does for a project made there.
+  if (connection) {
+    const project = await createProductProject({
+      root: product.projectsRoot, firstMessage, product: product.profileId, title, description: product.hasIdentity ? description : '',
+      sessionPrefix: product.sessionPrefix, slugFallback: product.slugFallback, commitLabel: `Create ${product.noun} project`,
+      ...(product.hasIdentity ? { identity: { name: title.trim(), icon: icon?.trim() || Array.from(title.trim() || firstMessage?.trim() || '')[0]?.toLocaleUpperCase() || 'C' } } : {}),
+      runtimeManifestName: 'workflow.json', connection,
+    })
+    registerRemoteProject(project.id, connection, project.workspacePath, project.filesPath)
+    return project
+  }
   const options = await loadAgentProfileProviderOptions(product.profileId)
   // The product default, unless this person cannot use it here (Claude Code and Codex are admins-only on some servers):
   // then the first coding agent they may run, so a new project does not start on a refused account (server B
