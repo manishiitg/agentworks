@@ -24,7 +24,8 @@ export function ContinueOnlineDialog({ project, chatKey, tabId, name, close }: {
     let live = true
     teamRequest<ContinueOnlinePlan>({ project }, `/continue-online?key=${encodeURIComponent(chatKey)}`)
       .then(result => { if (live) setPlan(result) })
-      .catch(cause => { if (live) setError(teamError(cause)) })
+      // 404: the screen reloaded with the new feature but this Mac's AgentWorks still runs the version before it.
+      .catch(cause => { if (live) setError((cause as { status?: number; response?: { status?: number } })?.status === 404 || (cause as { response?: { status?: number } })?.response?.status === 404 ? 'This Mac\'s AgentWorks is running an older version. Restart AgentWorks, then try again.' : teamError(cause)) })
     return () => { live = false }
   }, [project, chatKey])
   useEffect(() => {
@@ -36,7 +37,8 @@ export function ContinueOnlineDialog({ project, chatKey, tabId, name, close }: {
   const row = 'flex items-start justify-between gap-3 border-t border-border py-1.5'
   return createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/70 p-4" onClick={close}>
     <section role="dialog" aria-modal="true" aria-labelledby="continue-online-title" className="w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto space-y-3 rounded-xl border border-border bg-background p-5 shadow-xl" onClick={event => event.stopPropagation()}>
-      <h2 id="continue-online-title" className="flex items-center gap-2 font-semibold"><Cloud aria-hidden className="h-4 w-4 text-primary" />Continue {name} online?</h2>
+      <h2 id="continue-online-title" className="flex items-center gap-2 font-semibold"><Cloud aria-hidden className="h-4 w-4 shrink-0 text-primary" />Continue this chat online?</h2>
+      <p className="-mt-1 text-xs text-muted-foreground">{name}</p>
       {!plan && !error && <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 aria-hidden className="h-3.5 w-3.5 animate-spin" />Checking what would move…</p>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       {plan && <>
