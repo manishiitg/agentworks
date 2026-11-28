@@ -105,3 +105,32 @@ func TestAgyResumeNeverStartsAFreshConversation(t *testing.T) {
 	CloseSession(owner)
 	peer.wait(t)
 }
+
+// A chat in Auto-review runs agy in its own Auto mode: the session is switched to "auto" before the prompt and
+// nothing approves on agy's behalf. Its request for one of the chat's own AgentWorks tools is allowed without
+// asking; any other request it sends goes to the person (here no one answers, so it is not allowed).
+func TestAgyAutoReviewRunsInAgyAutoMode(t *testing.T) {
+	var got LaunchRequest
+	SetLaunch("agy", func(req LaunchRequest) (*LaunchSpec, error) {
+		got = req
+		return &LaunchSpec{Env: []string{"GEMINI_API_KEY=test-only"}, AutoApprove: true, QuestionIDPrefix: "interaction_", NoSessionMCP: true, Outcome: refusalOutcome{},
+			PreApproved: func(title string, raw json.RawMessage) bool { return strings.Contains(string(raw), `"agentworks-`) }}, nil
+	})
+	t.Cleanup(func() { SetLaunch("agy", nil) })
+	workdir, owner := t.TempDir(), "chat-agy-review"
+	peer := installReplay(t, "agy_auto_review", workdir)
+	ctx := llmtypes.WithCodingAgentAutoReview(context.Background(), owner)
+
+	resp, err := Generate(ctx, "agy", "gemini-4-pro-high", human("hello"), agyCall(owner, workdir, "", WithNativeToolsMode("mcp_only")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.AutoReview {
+		t.Fatal("the launch was not told the chat is in Auto-review")
+	}
+	if resp.Choices[0].Content != "ok" {
+		t.Fatalf("answer = %q", resp.Choices[0].Content)
+	}
+	CloseAgentSession(owner, "agy")
+	peer.wait(t)
+}

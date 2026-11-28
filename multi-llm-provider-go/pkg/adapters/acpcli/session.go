@@ -78,6 +78,7 @@ type session struct {
 	// questionPrefix marks permission requests that are the agent's questions to the person.
 	questionPrefix string
 	fullTools      bool
+	preApproved    func(title string, rawInput json.RawMessage) bool
 	caps           agentCapabilities
 	authMethods    []string
 	outcome        Outcome
@@ -693,6 +694,31 @@ func (c *conn) stderrLine() string {
 		environment = c.cmd.Env
 	}
 	return stderrLine(c.stderr.String(), environment)
+}
+
+// reviewMode puts the session in the agent's own Auto-review mode for the chat's Auto-review. An agent whose
+// session does not offer that mode refuses the turn rather than running it without a reviewer.
+func (s *session) reviewMode(ctx context.Context) error {
+	want := s.agent.AutoReviewMode
+	s.mu.Lock()
+	sessionID, current, offered, known := s.sessionID, s.mode, false, len(s.modes) > 0
+	for _, m := range s.modes {
+		offered = offered || m == want
+	}
+	s.mu.Unlock()
+	if known && !offered {
+		return fmt.Errorf("this %s version has no Auto-review mode; choose Auto in the message box or update %s", s.agent.Label, s.agent.Label)
+	}
+	if current != want {
+		if err := s.rpc.call(ctx, "session/set_mode", map[string]any{"sessionId": sessionID, "modeId": want}, nil); err != nil {
+			return err
+		}
+		s.mu.Lock()
+		s.mode = want
+		s.mu.Unlock()
+	}
+	log.Printf("[ACP_CLI] session=%s agent=%s action=auto_review_mode mode=%s", s.rpc.owner, s.agent.ID, want)
+	return nil
 }
 
 // planTurn runs this one turn in the agent's own plan mode (/plan or the Plan

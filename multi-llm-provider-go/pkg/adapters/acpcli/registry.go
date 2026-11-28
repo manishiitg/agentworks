@@ -5,6 +5,7 @@
 package acpcli
 
 import (
+	"encoding/json"
 	"os/exec"
 	"sort"
 	"strings"
@@ -74,6 +75,9 @@ type Agent struct {
 	// StrictResume fails a turn whose session/load fails instead of opening
 	// a new conversation.
 	StrictResume bool
+	// AutoReviewMode is the agent's own session mode in which its reviewer approves each action (agy's "auto").
+	// A chat in Auto-review runs in it; empty means the agent has none and the chat runs as Auto.
+	AutoReviewMode string
 	// Launch, when set, prepares the agent's process (arguments, environment,
 	// confinement, private files); acpcli still owns the protocol. The
 	// agent's own package sets it with SetLaunch.
@@ -89,7 +93,9 @@ type LaunchRequest struct {
 	Owner     string
 	WorkDir   string
 	ToolsMode string // "", "mcp_only" or "full"
-	MCPConfig string
+	// AutoReview: the chat's Auto-review mode; the agent's own reviewer, not AutoApprove, approves its actions.
+	AutoReview bool
+	MCPConfig  string
 }
 
 // LaunchSpec is an agent's own process setup.
@@ -111,6 +117,9 @@ type LaunchSpec struct {
 	// NoSessionMCP sends no MCP servers in session/new (the agent reads its
 	// own MCP catalogue).
 	NoSessionMCP bool
+	// PreApproved, when set, names permission requests allowed without asking even when AutoApprove is off
+	// (the chat's own AgentWorks tools under Auto-review). Everything else goes to the person.
+	PreApproved func(title string, rawInput json.RawMessage) bool
 	// Outcome classifies turn failures; nil uses the stop reason only.
 	Outcome Outcome
 }
@@ -250,6 +259,8 @@ var registry = map[string]Agent{
 		SteersWithPrompt: func(version string) bool { return versionAtLeast(version, 1, 5, 0) },
 		// agy reports its checklist only as "Run update_steps" tool calls (T3 Code #41923).
 		StepsTool: "update_steps",
+		// agy's Auto mode: its reviewer approves each action and asks the person about risky ones (T3 Code's Auto).
+		AutoReviewMode: "auto",
 	},
 }
 

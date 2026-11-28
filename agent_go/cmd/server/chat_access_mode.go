@@ -14,7 +14,7 @@ import (
 // mode (owner, 26 Nov: "access is at project level.. mode is chat level"). Plan stays the per-message plan switch.
 //   - "" (Auto): the agent approves its own actions inside the folders it can reach.
 //   - auto_review: the program's own reviewer approves or refuses each action (Claude Code's auto mode, Cursor's
-//     Auto-review). Only programs with a working reviewer offer it.
+//     Auto-review, Antigravity's Auto mode). Only programs with a working reviewer offer it.
 //
 // full_access was a whole-Mac mode until 26 Nov. A chat still saved with it runs as Auto; whole Mac is now the
 // project's access.
@@ -47,7 +47,8 @@ func chatAccessRank(mode string) int {
 // reviewer only sees approval requests its own sandbox raises, and inside ours it raises none.
 func chatAutoReviewSupported(provider string) bool {
 	key := chatProviderKey(provider)
-	return key != "" && (key == chatProviderKey(string(llmproviders.ProviderClaudeCode)) || key == chatProviderKey(string(llmproviders.ProviderCursorCLI)))
+	return key != "" && (key == chatProviderKey(string(llmproviders.ProviderClaudeCode)) || key == chatProviderKey(string(llmproviders.ProviderCursorCLI)) ||
+		key == chatProviderKey(string(llmproviders.ProviderAgyCLI))) // agy's own Auto mode (acpcli AutoReviewMode)
 }
 
 // chatAccessEffective is the mode a turn of this program on this host gets from the saved one: Auto-review only on a
@@ -101,7 +102,7 @@ func chatAccessViewFor(saved, provider string, personalMac bool) *chatAccessView
 	case !personalMac:
 		auto.Why = "Auto-review runs only on your Mac for now."
 	case !auto.Available:
-		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code or Cursor."
+		auto.Why = "This coding app has no reviewer that works here yet. Use Claude Code, Cursor or Antigravity."
 	}
 	view.Options = []chatAccessOption{{Mode: "project", Available: true}, auto}
 	return view
