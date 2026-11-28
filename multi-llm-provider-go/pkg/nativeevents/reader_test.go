@@ -29,7 +29,8 @@ func TestNativeRecordConformance(t *testing.T) {
 {"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"content":[{"type":"tool_use","id":"tool1","name":"Agent"},{"type":"thinking","thinking":"PRIVATE_THOUGHT"}]}}
 {"type":"user","uuid":"result1","parentUuid":"a1","toolUseResult":{"agentId":"task1","isAsync":true},"message":{"content":[{"type":"tool_result","tool_use_id":"tool1"}]}}
 {"type":"user","uuid":"notice1","parentUuid":"result1","turnOrigin":"task_notification","origin":{"kind":"task-notification"},"message":{"content":"<task-notification><task-id>task1</task-id><tool-use-id>tool1</tool-use-id><status>completed</status></task-notification>"}}
-{"type":"assistant","uuid":"a2","parentUuid":"notice1","message":{"id":"msg-helper","content":[{"type":"thinking","thinking":"PRIVATE_THOUGHT"},{"type":"text","text":"The helper finished."}]}}
+{"type":"assistant","uuid":"a2t","parentUuid":"notice1","message":{"id":"msg-helper","content":[{"type":"thinking","thinking":"PRIVATE_THOUGHT"}]}}
+{"type":"assistant","uuid":"a2","parentUuid":"a2t","message":{"id":"msg-helper","content":[{"type":"text","text":"The helper finished."}]}}
 `, []string{"turn:started", "tool:started", "helper:started", "tool:finished", "helper:started", "helper:finished", "turn:started", "reply:committed"}},
 		{"claude-code", `{"type":"user","uuid":"u1","origin":{"kind":"human"}}
 {"type":"assistant","uuid":"a1","parentUuid":"u1","message":{"content":[{"type":"tool_use","id":"tool1","name":"Agent"}]}}
@@ -76,7 +77,9 @@ func TestNativeRecordConformance(t *testing.T) {
 			for _, r := range b.Records {
 				got = append(got, r.Kind+":"+r.State)
 				// PLAT-746: the synthetic helper follow-up's committed reply is
-				// also streamed as a native block. Preserve that exact identity.
+				// also streamed as a native block. Preserve that exact identity,
+				// though Claude writes the thinking and text blocks on separate
+				// lines (a mismatch here showed the reply three times).
 				if r.Provider == "claude-code" && r.Origin == "helper_finished" && r.Kind == "reply" && r.AssistantBlockID != "claude:msg-helper:1" {
 					t.Fatalf("lost native helper reply block identity: %+v", r)
 				}
