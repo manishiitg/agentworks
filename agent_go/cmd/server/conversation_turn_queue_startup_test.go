@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	storeevents "github.com/manishiitg/coding-agent-loop/agent_go/internal/events"
 	unifiedevents "github.com/manishiitg/mcpagent/events"
 )
 
@@ -29,6 +30,7 @@ func TestStartupResumeStartsOnlyTheLimitAndAdmitsTheRestInOrder(t *testing.T) {
 
 	restart := func() (*StreamingAPI, chan string, map[string]chan struct{}) {
 		api := newConversationTurnQueueTestAPI(files)
+		api.eventStore = storeevents.NewEventStore(50)
 		started := make(chan string, 16)
 		release := map[string]chan struct{}{}
 		for _, session := range sessions {
@@ -146,9 +148,11 @@ func TestStartupResumeStartsOnlyTheLimitAndAdmitsTheRestInOrder(t *testing.T) {
 	if first := got(started, startupResumeLimit); !first["chat-i"] || !first["chat-j"] {
 		t.Fatalf("oldest chats did not resume first: %v", first)
 	}
-	api.startupResumeTurnEvent("chat-i", unifiedevents.UserMessage) // the server's own echo, before the CLI is up
+	// The slot is read from the chat's own events: a queue-started turn never
+	// called the queue back, so the slot only ever freed at the cap.
+	api.eventStore.AddEvent("chat-i", storeevents.Event{ID: "echo", Type: string(unifiedevents.UserMessage), SessionID: "chat-i", Timestamp: time.Now()}) // the server's own echo, before the CLI is up
 	quiet(started)
-	api.startupResumeTurnEvent("chat-i", unifiedevents.StreamingStart)
+	api.eventStore.AddEvent("chat-i", storeevents.Event{ID: "stream", Type: string(unifiedevents.StreamingStart), SessionID: "chat-i", Timestamp: time.Now()})
 	if session := next(started); session != "chat-k" {
 		t.Fatalf("first model event freed the slot for %s, want chat-k", session)
 	}

@@ -31,16 +31,37 @@ func startupResumeModelEvent(eventType unifiedevents.EventType) bool {
 	return false
 }
 
-// startupResumeTurnEvent frees the chat's slot at its first model event.
-func (api *StreamingAPI) startupResumeTurnEvent(session string, eventType unifiedevents.EventType) {
-	if startupResumeModelEvent(eventType) {
-		api.releaseStartupResume(session, "started")
-	}
-}
-
-// holdStartupResume caps a slot just given to session.
+// holdStartupResume frees a slot just given to session at the chat's first
+// model event, read from its own event stream, or after the cap. A turn the
+// queue starts itself never calls back with its events, so the stream is the
+// only signal that the CLI is up.
 func (api *StreamingAPI) holdStartupResume(session string) {
-	time.AfterFunc(startupResumeCap, func() { api.releaseStartupResume(session, "cap") })
+	if api.eventStore == nil {
+		time.AfterFunc(startupResumeCap, func() { api.releaseStartupResume(session, "cap") })
+		return
+	}
+	store := api.eventStore
+	sub := store.Subscribe(session)
+	timeout := time.NewTimer(startupResumeCap)
+	go func() {
+		defer store.Unsubscribe(session, sub)
+		defer timeout.Stop()
+		for {
+			select {
+			case event, ok := <-sub.Ch:
+				if !ok {
+					return
+				}
+				if startupResumeModelEvent(unifiedevents.EventType(event.Type)) {
+					api.releaseStartupResume(session, "started")
+					return
+				}
+			case <-timeout.C:
+				api.releaseStartupResume(session, "cap")
+				return
+			}
+		}
+	}()
 }
 
 // startRecoveredChats kicks the oldest recovered chats up to the limit and
