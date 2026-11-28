@@ -73,6 +73,7 @@ func TestSecretSourcesMCPAndWebsiteExplainLentVaultSecrets(t *testing.T) {
 func TestSecretSourcesCrewShareAndPrivateAccess(t *testing.T) {
 	t.Run("Crew", func(t *testing.T) {
 		f, _ := newExternalCrewCommandFixture(t)
+		shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 		store, err := chathistory.NewFilesystemStore(t.TempDir())
 		if err != nil {
 			t.Fatal(err)

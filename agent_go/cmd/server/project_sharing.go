@@ -15,11 +15,13 @@ var projectSharingEnabled = func() bool {
 	return !strings.EqualFold(strings.TrimSpace(os.Getenv("AGENTWORKS_PROJECT_SHARING")), "off")
 }
 
-// crewSharedWithOthers says whether users other than its owner may see and use the Crew at root (a Crew/<folder> or
-// an owner-tree project path): project sharing is on and the owner has not made the Crew private. The private flag
-// is in the server-controlled owner registry, so neither a project file nor an agent turn can change it. A path that
-// names no Crew is not shared.
-func crewSharedWithOthers(root string) bool {
+// Sharing is three things (#4545): People (co-owners, Users, Teams) work in a project, Bots are agents others use
+// without joining, and the dashboard is shared like a Drive file. The dashboard's audience (the registry's Private flag
+// and RunPeople) opens its pages and their live data only: never the project, its chats, agents or files.
+
+// crewDashboardOpenToCompany says whether anyone at the company with the link may open the dashboards of the project at
+// root (general access "Anyone at the company with the link"): project sharing is on and the owner has not restricted it.
+func crewDashboardOpenToCompany(root string) bool {
 	if !projectSharingEnabled() {
 		return false
 	}
@@ -28,20 +30,13 @@ func crewSharedWithOthers(root string) bool {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if !found {
-		return false
-	}
-	return !found || !rec.Private
+	return found && !rec.Private
 }
 
-// crewSharedWith says whether this account may use the Crew at root as a Run person: the Crew is shared with
-// everyone (crewSharedWithOthers) or the owner named the account (run people on a private Crew).
-func crewSharedWith(root, userID string) bool {
-	if crewSharedWithOthers(root) {
-		return true
-	}
-	// A joined Team member sees and builds the Crew whatever its sharing (crew_co_owners.go).
-	if crewIsCoOwner(root, userID) {
+// crewDashboardSharedWith says whether userID may open the dashboards of the project at root: they work in it, or its
+// dashboard is open to the company, or the owner added them to the dashboard.
+func crewDashboardSharedWith(root, userID string) bool {
+	if crewSharedWith(root, userID) || crewDashboardOpenToCompany(root) {
 		return true
 	}
 	if !projectSharingEnabled() || strings.TrimSpace(userID) == "" {
@@ -52,8 +47,11 @@ func crewSharedWith(root, userID string) bool {
 		return false
 	}
 	rec, found := defaultProjectOwners().Lookup(id.Product, id.Folder)
-	if !found {
-		return false
-	}
-	return containsID(rec.RunPeople, userID)
+	return found && containsID(rec.RunPeople, userID)
+}
+
+// crewSharedWith says whether this account works in the Crew at root besides its main owner: a co-owner, a User or a
+// person of a Team in its Users (crew_co_owners.go). The dashboard's audience is not project access.
+func crewSharedWith(root, userID string) bool {
+	return crewIsCoOwner(root, userID)
 }

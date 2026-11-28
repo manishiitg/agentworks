@@ -227,13 +227,10 @@ func dashboardPublicViews(ctx context.Context, target dashboardTarget) ([]dashbo
 	return views, nil
 }
 
-// dashboardPublicShareViews feeds the Share screen of a Crew with its Team off: its main owner gets the same control
-// the Team tab's Dashboards card has. Anyone else, or a Crew with its Team on, gets nothing here.
+// dashboardPublicShareViews feeds the one dashboard Share window (#4545): its "Anyone with the link, no sign-in" section,
+// for the project's main owner only.
 func dashboardPublicShareViews(ctx context.Context, claims *UserClaims, target dashboardTarget) []dashboardPublicView {
 	if target.Kind != "crew" || dashboardPublicMacCrewBlocked(target.ID) || !dashboardPublicMainOwner(ctx, claims, target) {
-		return nil
-	}
-	if team, err := readCrewTeam(target.ID); err == nil && team.On {
 		return nil
 	}
 	views, err := dashboardPublicViews(ctx, target)

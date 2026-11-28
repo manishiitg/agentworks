@@ -93,8 +93,9 @@ func TestExternalCrewToolsRespectTokenCrewBounds(t *testing.T) {
 	}
 
 	all := &UserClaims{UserID: "owner", AccessToken: &accesstokens.Token{Scopes: []string{"crews:read"}, AllCrews: true}}
-	if _, out := externalCrewRequest(t, env, all, "list_crews", map[string]any{}); len(out["crews"].([]any)) != 3 {
-		t.Fatalf("all_crews token must see every accessible Crew (incl. other users'): %v", out)
+	// Another person's Crew with its dashboard open is not listed: its dashboard opens pages only (#4545).
+	if _, out := externalCrewRequest(t, env, all, "list_crews", map[string]any{}); len(out["crews"].([]any)) != 2 {
+		t.Fatalf("all_crews token must see every Crew the caller works in: %v", out)
 	}
 }
 
@@ -338,6 +339,8 @@ func TestExternalCrewCostsAreOwnerOnly(t *testing.T) {
 			t.Fatalf("another person's Crew is in the owner's cost list: %v", out)
 		}
 	}
+	// The owner uses gamma through its bot, so this refusal is the costs rule itself, not missing access.
+	shareCrewBotForTest(t, linkGammaPath, "owner")
 	if code, _ := call(owner, map[string]any{"crew_id": "gamma"}); code != 403 {
 		t.Fatalf("a Crew someone else owns must be refused, got %d", code)
 	}

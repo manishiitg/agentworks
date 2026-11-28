@@ -128,7 +128,7 @@ func TestAccessToolSharesSameDefaultDashboardAsShare(t *testing.T) {
 				t.Fatalf("fixture already has dashboard: %+v %v", before, err)
 			}
 			if origin == "share" {
-				externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}), 200)
+				externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "workflow_id": "invoices", "access": "restricted", "emails": []string{"reader@example.com"}}), 200)
 			} else {
 				registrar := &recordingRegistrar{}
 				if err := f.api.registerUserAccessTools(registrar, "owner", "Workflow/invoices", workflowChatPolicy{Capabilities: map[string]bool{"user_management": true}}); err != nil {

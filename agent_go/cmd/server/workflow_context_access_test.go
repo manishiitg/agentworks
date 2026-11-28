@@ -71,6 +71,7 @@ func TestCrewContextAccessRequiresCurrentAudience(t *testing.T) {
 	own := registerTestCrew(t, "research", "alice", false)
 	shared := registerTestCrew(t, "shared", "bob", true)
 	private := registerTestCrew(t, "private", "bob", false)
+	shareCrewBotForTest(t, shared, "alice")
 	workspace := &mockWorkspaceAPI{files: map[string]string{
 		own + "/product.json":     `{"schema_version":1,"product":"work","id":"crew-research","title":"Research"}`,
 		shared + "/product.json":  `{"schema_version":1,"product":"work","id":"crew-shared","title":"Shared"}`,
@@ -100,9 +101,7 @@ func TestCrewContextAccessRequiresCurrentAudience(t *testing.T) {
 			t.Fatalf("unauthorized reference accepted: %s/%s => %v %v %v", denied.user, denied.root, got, roots, err)
 		}
 	}
-	if err := defaultProjectOwners().SetAudience("work", "shared", true, nil); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, shared)
 	if got, roots, err := authorizeWorkflowContextPathsWithReadRoots(ctxFor("alice"), []string{shared}); err == nil || got != nil || roots != nil {
 		t.Fatalf("revoked Crew reference remained usable: %v %v %v", got, roots, err)
 	}

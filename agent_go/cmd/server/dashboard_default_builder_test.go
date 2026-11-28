@@ -50,11 +50,11 @@ func TestCrewDashboardCreationRequiresShareConfirmation(t *testing.T) {
 		t.Fatalf("missing creation refusal: %+v", state)
 	}
 	empty()
-	if crewSharedWithOthers(root) {
+	if crewDashboardOpenToCompany(root) {
 		t.Fatal("sharing changed before consent")
 	}
-	w = f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone", "create_dashboard": true})
-	if state := externalTestBody(t, w, 200); state["mode"] != "everyone" {
+	w = f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "access": "company", "create_dashboard": true})
+	if state := externalTestBody(t, w, 200); state["access"] != "company" {
 		t.Fatalf("share not saved: %+v", state)
 	}
 	stored, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
@@ -63,12 +63,13 @@ func TestCrewDashboardCreationRequiresShareConfirmation(t *testing.T) {
 	}
 	revision := stored.Dashboard.Revision
 	// A later ordinary share reuses the existing dashboard.
-	externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone"}), 200)
+	externalTestBody(t, f.call(t, "owner", "share", map[string]any{"action": "set", "crew_id": "team", "access": "company"}), 200)
 	again, err := dashboardWorkspaceRequest(ctx, dashboards.Request{Root: root, Action: "get", ID: defaultDashboardID, IncludeDraft: true})
 	if err != nil || again.Dashboard.Revision != revision {
 		t.Fatalf("share rewrote dashboard: %+v %v", again, err)
 	}
-	externalTestBody(t, f.call(t, "other", "share", map[string]any{"action": "set", "crew_id": "team", "mode": "everyone", "create_dashboard": true}), 403)
+	// Someone with only the dashboard does not reach the project, so cannot share it (#4545).
+	externalTestBody(t, f.call(t, "other", "share", map[string]any{"action": "set", "crew_id": "team", "access": "company", "create_dashboard": true}), 404)
 }
 
 // A private Goal keeps its standard dashboard. Opening it

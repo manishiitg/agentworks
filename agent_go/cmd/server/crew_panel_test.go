@@ -127,6 +127,7 @@ func TestCrewPanelDeadlineAndCacheAdmission(t *testing.T) {
 func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	f.write(t, externalCommandCrewRoot+"/db/reports/example.html", "<html><title>Example result</title></html>")
 	// PLAT-746-513 / Codex1730: one workflow with three timers and a
@@ -275,9 +276,7 @@ func TestCrewPanelHTTPAndNoticesUseCurrentCrewAccess(t *testing.T) {
 		t.Fatal("shared Crew notice refused")
 	}
 	// Registry is the sharing authority; deny the same previously allowed user.
-	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, externalCommandCrewRoot)
 	if got := call(other); got.Code != 403 {
 		t.Fatalf("private Crew panel status %d", got.Code)
 	}
@@ -452,6 +451,7 @@ func TestCrewPanelBackgroundSectionServesLastSnapshotWhileRefreshing(t *testing.
 func TestCrewPanelNoticeAdmissionAvoidsRuntimeExpansionAndKeepsCurrentAccess(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("AGENTWORKS_DEPLOYMENT_MODE", "server")
 	owner := &UserClaims{UserID: "owner", Username: "owner"}
 	other := &UserClaims{UserID: "other", Username: "other"}
@@ -477,13 +477,11 @@ func TestCrewPanelNoticeAdmissionAvoidsRuntimeExpansionAndKeepsCurrentAccess(t *
 		t.Fatal("out-of-scope Crew leaked")
 	}
 	withProjectSharing(t, false)
-	if f.api.crewPanelNoticeAllowed(t.Context(), other, notice) || !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
-		t.Fatal("sharing off did not retain owner-only access")
+	if !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
+		t.Fatal("sharing off did not retain the owner's access")
 	}
 	withProjectSharing(t, true)
-	if err := defaultProjectOwners().SetPrivate("work", "test-team", true); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, externalCommandCrewRoot)
 	if f.api.crewPanelNoticeAllowed(t.Context(), other, notice) || !f.api.crewPanelNoticeAllowed(t.Context(), owner, notice) {
 		t.Fatal("sharing revocation was not immediate")
 	}

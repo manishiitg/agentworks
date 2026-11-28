@@ -220,7 +220,8 @@ func TestCrewSettingsChatToolsStayBoundToCrewAndCaller(t *testing.T) {
 				if _, err := panels.tools["settings"].exec(ctx, map[string]any{"action": "get"}); err == nil {
 					t.Fatal("retained Builder panel admitted removed co-owner")
 				}
-				crewCapabilityHTTP(t, f, crewWriter(person), "integrations", map[string]any{"action": "slack_bot_get"}, 403)
+				// Removed from the project, they have none of it; its open dashboard gives its pages only (#4545).
+				crewCapabilityHTTP(t, f, crewWriter(person), "integrations", map[string]any{"action": "slack_bot_get"}, 404)
 			}
 			// The feature declaration and actual registrar admit the same sharing tools.
 			if !agentprofiles.HasFeature(profile, "dashboard") {
@@ -254,12 +255,12 @@ func TestCrewDashboardChatCannotRetargetSharing(t *testing.T) {
 		}
 	}
 	ctx := context.WithValue(context.Background(), UserContextKey, &UserClaims{UserID: "owner", Username: "owner"})
-	if _, err := tool.exec(ctx, map[string]any{"action": "set", "mode": "private", "workspace": "Crew/unrelated"}); err == nil {
+	if _, err := tool.exec(ctx, map[string]any{"action": "set", "access": "restricted", "workspace": "Crew/unrelated"}); err == nil {
 		t.Fatal("bound sharing accepted a foreign selector")
 	}
-	out, err := tool.exec(ctx, map[string]any{"mode": "private", "action": "set"})
+	out, err := tool.exec(ctx, map[string]any{"access": "restricted", "action": "set"})
 	var body map[string]any
-	if err != nil || json.Unmarshal([]byte(out), &body) != nil || body["mode"] != "private" {
+	if err != nil || json.Unmarshal([]byte(out), &body) != nil || body["access"] != "restricted" {
 		t.Fatalf("bound share did not run its canonical service: %s %v", out, err)
 	}
 	if _, err := tool.exec(ctx, map[string]any{"action": "get"}); err != nil {
@@ -306,10 +307,10 @@ func TestCrewDashboardChatCannotRetargetSharing(t *testing.T) {
 	projectRecordedCatalog(t, limited)
 	// Native execution contexts may omit claims. Retain the original token's
 	// consent instead of reconstructing an unrestricted website principal.
-	if _, err := limited.tools["share"].exec(context.Background(), map[string]any{"action": "set", "mode": "everyone"}); err == nil {
+	if _, err := limited.tools["share"].exec(context.Background(), map[string]any{"action": "set", "access": "company"}); err == nil {
 		t.Fatal("dashboard tool dropped the captured token's scope")
 	}
-	if _, err := limited.tools["share"].exec(ctx, map[string]any{"action": "set", "mode": "everyone"}); err == nil {
+	if _, err := limited.tools["share"].exec(ctx, map[string]any{"action": "set", "access": "company"}); err == nil {
 		t.Fatal("same-user unscoped context widened sharing consent")
 	}
 }

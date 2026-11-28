@@ -433,9 +433,7 @@ func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
 	for _, fixture := range []struct{ kind, id, root string }{{"work", "beta", projectMCPBetaRoot}, {"work", "checks", checksRoot}, {"workflow", goal.ID, "Workflow/reports"}} {
 		t.Run(fixture.kind+"/"+fixture.id, func(t *testing.T) {
 			if fixture.kind == "work" {
-				if err := defaultProjectOwners().SetAudience(fixture.kind, strings.TrimPrefix(fixture.root, "Crew/"), true, []string{"other"}); err != nil {
-					t.Fatal(err)
-				}
+				shareCrewBotForTest(t, fixture.root, "other")
 			}
 			a := projectMCPAudience{fixture.kind, fixture.id, "use"}
 			token := a.token(accesstokens.Token{Scopes: a.scopes()})
@@ -444,9 +442,7 @@ func TestProjectMCPSharingRemovalCheckedNextRequest(t *testing.T) {
 				t.Fatal("shared access refused", err)
 			}
 			if fixture.kind == "work" {
-				if err := defaultProjectOwners().SetAudience(fixture.kind, strings.TrimPrefix(fixture.root, "Crew/"), true, nil); err != nil {
-					t.Fatal(err)
-				}
+				stopCrewBotForTest(t, fixture.root)
 			} else {
 				env.mock.mu.Lock()
 				var current WorkflowManifest

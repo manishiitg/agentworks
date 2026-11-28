@@ -79,7 +79,10 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 			}
 			setAudience(nil)
 			denied("initial")
+			// Adding the person to the dashboard opens its pages only (#4545); a bot opens the project.
 			setAudience([]string{"owner"})
+			denied("dashboard people")
+			shareCrewBotForTest(t, linkGammaPath, "owner")
 			out, err := invoke()
 			if err != nil {
 				t.Fatalf("shared %s refused: %v", surface, err)
@@ -98,7 +101,7 @@ func TestDeclaredCrewEntryAndLinksRecheckCurrentAccess(t *testing.T) {
 			} else if out != linkGammaPath {
 				t.Fatalf("allowed # ref returned %q, want %q", out, linkGammaPath)
 			}
-			setAudience(nil)
+			stopCrewBotForTest(t, linkGammaPath)
 			denied("revoked")
 		})
 	}
@@ -227,14 +230,14 @@ func TestLinkedPrivateCrewFileReadChecksLiveAccess(t *testing.T) {
 	read(false, "initial")
 	list(false, "initial")
 	mcpRead(false, "initial")
-	setAudience([]string{"owner"})
+	shareCrewBotForTest(t, linkGammaPath, "owner")
 	if err := attach(); err != nil {
 		t.Fatalf("shared link refused: %v", err)
 	}
 	read(true, "shared")
 	list(true, "shared")
 	mcpRead(true, "shared")
-	setAudience(nil)
+	stopCrewBotForTest(t, linkGammaPath)
 	read(false, "revoked same client/session")
 	list(false, "revoked same client/session")
 	mcpRead(false, "revoked")

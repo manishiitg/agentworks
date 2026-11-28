@@ -130,7 +130,7 @@ func crewPeopleGetsLines(level string) []string {
 
 // crewPeopleShareRecord reads the Crew's Share record: open to everyone, and the people it names.
 func crewPeopleShareRecord(root string) (everyone bool, named []string) {
-	if crewSharedWithOthers(root) {
+	if crewDashboardOpenToCompany(root) {
 		return true, nil
 	}
 	if id, ok := projectIdentityOf(root); ok && isProjectProfileID(id.Product) {

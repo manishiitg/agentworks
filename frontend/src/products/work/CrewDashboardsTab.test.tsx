@@ -9,12 +9,10 @@ vi.mock('./teamApi', () => ({
   crewDashboardsTab: state.remote,
   teamDashboardAction: state.action,
   teamFailure: (error: Error) => error,
-  teamPublicLink: vi.fn(),
 }))
 vi.mock('../../stores/useCapabilitiesStore', () => ({ useCapabilitiesStore: (select: (value: unknown) => unknown) => select({ capabilities: { local_mode: false } }) }))
 vi.mock('../../stores/useWorkspaceConnectionStore', () => ({ useWorkspaceConnectionStore: (select: (value: unknown) => unknown) => select({ activeWorkspaceId: 'server' }) }))
-vi.mock('./TeamTab', () => ({ teamCard: 'card', DashboardPeopleCard: () => null }))
-vi.mock('../../components/workflow/PublicLinkControl', () => ({ PublicLinkControl: () => null }))
+vi.mock('./TeamTab', () => ({ teamCard: 'card' }))
 vi.mock('../../components/workflow/reportDocuments', () => ({ selectReportDocument: vi.fn() }))
 vi.mock('../../utils/agentPurposeDraft', () => ({ fillMainDraft: vi.fn() }))
 vi.mock('../../stores/useChatStore', () => ({ useChatStore: { getState: () => ({ addToast: vi.fn() }) } }))

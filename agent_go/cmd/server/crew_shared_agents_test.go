@@ -60,7 +60,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		}
 		return record
 	}
-	coach := create("owner", "team:chat:coach", "Coach", "Help the team prepare useful feedback.")
+	coach := create("owner", "team:chat:coach", "Coach", "Review a situation and suggest practical next steps.")
 	private := create("owner", "team:chat:private", "Private planning", "Owner planning only.")
 	reg := &recordingRegistrar{}
 	owner := &UserClaims{UserID: "owner", Username: "Owner"}
@@ -68,10 +68,22 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	projectRecordedCatalog(t, reg)
-	if _, err := reg.tools["share"].exec(ctx, map[string]any{"action": "set", "mode": "private", "shared_agents": []any{coach.ConversationKey}, "agent_purposes": map[string]any{coach.ConversationKey: "Review a situation and suggest practical next steps."}}); err != nil {
-		t.Fatal(err)
+	// The colleague uses the Coach as a bot (#4545: the dashboard's audience opens pages only); the selection keeps the
+	// history boundary of the shared tab.
+	coachBot := func(on bool) {
+		t.Helper()
+		bot := &crewBot{Maker: "owner", People: []string{"other"}}
+		if !on {
+			bot = nil
+		}
+		if err := writeCrewBot(externalCommandCrewRoot, coach.ConversationKey, bot); err != nil {
+			t.Fatal(err)
+		}
+		resetCrewOwnerCache()
 	}
-	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}); err != nil {
+	activateTestAccounts(t, "other")
+	coachBot(true)
+	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}, []string{coach.ConversationKey}); err != nil {
 		t.Fatal(err)
 	}
 	if got := crewSharedAgentKeys(externalCommandCrewRoot); len(got) != 1 || got[0] != coach.ConversationKey {
@@ -272,6 +284,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}, nil); err != nil {
 		t.Fatal(err)
 	}
+	coachBot(false)
 	if err := f.api.recheckAgentMessageAdmission(ctx, contactPair, agentMessage{From: 1}); err == nil {
 		t.Fatal("shared agent retained reply access after unsharing")
 	}
@@ -286,6 +299,7 @@ func TestCrewSharedAgentsKeepExistingConversationAndAuthority(t *testing.T) {
 	if _, err := f.api.sendAgentMessage(internalBotRequestContext(ctx, "other"), "other", externalCrewCaller(&UserClaims{UserID: "other", Username: "Colleague"}), triggerTarget{}, "old inbox", contact.ID, "revoked-reply"); err == nil {
 		t.Fatal("old inbox retained selected-tab authority")
 	}
+	coachBot(true)
 	if err := defaultProjectOwners().SetAudience("work", "test-team", true, []string{"other"}, []string{coach.ConversationKey}); err != nil {
 		t.Fatal(err)
 	}

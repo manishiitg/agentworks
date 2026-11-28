@@ -379,7 +379,7 @@ func TestEditedManifestOwnerNeverChangesOwnershipOrLaunchIdentity(t *testing.T) 
 }
 
 // Launching in someone else's Crew follows its current sharing and never changes whose slot it runs as: "Only me"
-// keeps B out, "Chosen people: B" lets B in, back to "Only me" shuts B out again, and a Team member keeps access only while
+// keeps B out, a bot shared with B lets B in, stopping it shuts B out again, and a Team member keeps access only while
 // joined. (SetAudience's flag is private: true with no people is "Only me".)
 func TestCrewLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
 	f := newMultiUserFixture(t, sharedIdentityLayout())
@@ -391,18 +391,14 @@ func TestCrewLaunchUsesCurrentShareWithoutChangingOwner(t *testing.T) {
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
 		t.Fatal("a private Crew admitted another person")
 	}
-	if err := defaultProjectOwners().SetAudience("work", fixtureCrewFolder, true, []string{fixtureUserB}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/"+fixtureCrewFolder, fixtureUserB)
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err != nil {
 		t.Fatalf("shared Crew refused: %v", err)
 	}
 	if got := decideTurnRunAs(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); got.Slot == fixtureSlotB || got.User == fixtureUserB {
 		t.Fatalf("sharing made B's turn run as B: %+v", got)
 	}
-	if err := defaultProjectOwners().SetAudience("work", fixtureCrewFolder, true, nil); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, "Crew/"+fixtureCrewFolder)
 	if err := checkProjectLaunchOwner(f.Ctx(fixtureUserB), in, defaultRunAsDeps()); err == nil {
 		t.Fatal("unshare did not revoke launch")
 	}

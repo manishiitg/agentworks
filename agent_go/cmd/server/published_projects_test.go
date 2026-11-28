@@ -230,9 +230,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if response := readSaved(narrow, 0, 7); response.Code < 400 {
 		t.Fatal("saved history ignored connection scope")
 	}
-	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/app-c0de0001", "other")
 	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 	if binding, _, ok := api.resolveExternalWorkspace(other, GetUserFromContext(other), "work:c0de0001-0000"); !ok || binding.OwnedByCaller {
 		t.Fatal("history refusal did not exercise a shared Run caller")
@@ -245,9 +243,7 @@ func TestPublishedProjectKeepsSourceAndHistoryPrivate(t *testing.T) {
 	if response := readSaved(other, 0, 7); response.Code < 400 {
 		t.Fatal("Run caller read saved chat over MCP")
 	}
-	if err := registry.SetRunPeople("work", "app-c0de0001", nil); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, "Crew/app-c0de0001")
 	if response := readSaved(other, 7, 7); response.Code < 400 {
 		t.Fatal("revoked Builder continued reading saved chat")
 	}
@@ -314,9 +310,7 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	withProjectSharing(t, true)
-	if err := registry.SetRunPeople("work", "app-c0de0001", []string{"other"}); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/app-c0de0001", "other")
 	other := context.WithValue(ctx, UserContextKey, &UserClaims{UserID: "other", Username: "other"})
 	request := httptest.NewRequest(http.MethodPost, "/", nil).WithContext(other)
 	args := map[string]any{"crew_id": p.WorkspaceID, "agent_id": p.AgentID, "path": "code/run.py"}
@@ -372,9 +366,7 @@ func TestPublishedAgentKeepsDestinationEditableAndPinsItsSource(t *testing.T) {
 		t.Fatalf("shared Main resource=%d %s", sharedMemory.Code, sharedMemory.Body.String())
 	}
 	args["path"] = "code/run.py"
-	if err := registry.SetRunPeople("work", "app-c0de0001", nil); err != nil {
-		t.Fatal(err)
-	}
+	stopCrewBotForTest(t, "Crew/app-c0de0001")
 	revoked := httptest.NewRecorder()
 	api.externalCrewCall(revoked, request, "read_crew_file", args)
 	if revoked.Code < 400 || strings.Contains(revoked.Body.String(), "SHARED_AGENT_SOURCE") {

@@ -123,6 +123,20 @@ func crewAccessFor(claims *UserClaims, ref crewPathRef) crewAccessLevel {
 	return crewAccessNone
 }
 
+// crewPageAccess says whether the caller may open the project's dashboard pages and their live data: anyone with
+// access to the project, or someone its dashboard is shared with (people added or anyone at the company). This is the
+// only check that admits the dashboard's audience (#4545); everything else uses crewAccessFor.
+func crewPageAccess(claims *UserClaims, ref crewPathRef) bool {
+	if crewAccessFor(claims, ref) != crewAccessNone {
+		return true
+	}
+	if claims == nil || ref.OwnerID == "" {
+		return false
+	}
+	product, _, ok := projectProductForPath(ref.Root)
+	return ok && userAllowedProduct(claims, product.ProfileID) && crewDashboardSharedWith(ref.Root, claims.UserID)
+}
+
 // crewOwners caches Crew/<id> -> its registered owner. Ownership changes
 // only through crew creation/transfer, so a short TTL is enough.
 var crewOwners = &crewOwnerCache{entries: map[string]crewOwnerEntry{}}

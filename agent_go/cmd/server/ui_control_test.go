@@ -134,9 +134,10 @@ func TestUIControlEveryoneGetsOnlyTheDashboard(t *testing.T) {
 	withMemoryUserDirectory(t, `{"users":[{"id":"user-a","username":"user-a","products":["work"]},{"id":"user-c","username":"user-c","products":["work"]}]}`)
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	stubCrewLookups(t, map[string]string{"Crew/crew-1": "user-a"}, nil)
-	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "crew-1", OwnerID: "user-a", Shared: true}); err != nil {
+	if err := defaultProjectOwners().Register(projectOwnerRecord{Product: "work", Folder: "crew-1", OwnerID: "user-a", ProjectID: "crew-1-id", Shared: true}); err != nil {
 		t.Fatal(err)
 	}
+	shareCrewBotForTest(t, "Crew/crew-1", "user-c")
 	api := &StreamingAPI{activeSessions: map[string]*ActiveSessionInfo{
 		"work:project:crew-1":   {SessionID: "work:project:crew-1", UserID: "user-a", WorkspacePath: "Crew/crew-1"},
 		"work:project:crew-1-c": {SessionID: "work:project:crew-1-c", UserID: "user-c", WorkspacePath: "Crew/crew-1"},

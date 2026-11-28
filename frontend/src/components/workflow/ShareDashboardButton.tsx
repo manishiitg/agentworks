@@ -22,6 +22,8 @@ type ShareState = {
   has_owners?: boolean
   accounts?: { kind: string; name: string; use: string }[]
   public_links?: PublicLink[]
+  /** A project's dashboard opens its pages only; a Goal's or Flow's share still lets people run and ask it. */
+  pages_only?: boolean
 }
 /** users: a project on the server only. Users work in it through chat with its setup and cannot change it; each has extra
  * locked paths besides always_locked. */
@@ -212,7 +214,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
         <option value="restricted">Restricted: only people added</option>
         <option value="company">Anyone at the company with the link</option>
       </select>
-      <p className="text-xs text-muted-foreground">{companyWide ? 'They sign in and see the live page, chat with it and use its functions.' : state.has_owners ? 'Only people added, co-owners and Users can open it.' : 'Only people added and its Team can open it.'} Opening it doesn't make them part of the project.</p>
+      <p className="text-xs text-muted-foreground">{companyWide ? 'Anyone at the company signs in and sees the live page.' : state.has_owners ? 'Only people added, co-owners and Users can open it.' : 'Only people added and its Team can open it.'} {state.pages_only ? 'They see the page only, not the project or its chats and files. To let people ask it, share an agent as a bot.' : 'They can also run it and ask it.'}</p>
     </section>
     {!!state.public_links?.length && <section aria-label="Anyone with the link" className="space-y-3 border-t border-border pt-4">
       <div><h3 className="font-semibold">Anyone with the link, no sign-in</h3><p className="text-xs text-muted-foreground">A frozen copy of a dashboard that anyone can open. It changes only when you update it.</p></div>
@@ -223,7 +225,7 @@ export function ShareDashboardButton({ workspacePath, documentPath, label = 'Sha
     </section>}
     {confirmation && <section role="region" aria-label="Create a dashboard to share" className="space-y-3 rounded-lg border border-border p-3">
       <h3 className="font-semibold">Create a dashboard for this project?</h3>
-      <p className="text-xs text-muted-foreground">People will open it to chat with this project and use its published functions.</p>
+      <p className="text-xs text-muted-foreground">People you share with will open its pages, not the project.</p>
       <p className="text-xs">Share with: {confirmation.mode === 'everyone' ? 'Everyone at the company' : confirmation.emails?.join(', ')}</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={busy} onClick={() => void run(() => putShare(confirmation.mode, confirmation.emails, true))} className="rounded-md bg-primary px-3 py-2 text-xs text-primary-foreground disabled:opacity-50">Create dashboard and share</button>

@@ -390,9 +390,7 @@ func TestCrewFunctionGuards(t *testing.T) {
 func TestCrewFunctionsHTTPOwnerChangesTeamMemberOnlyReads(t *testing.T) {
 	env := newCrewFunctionEnv(t)
 	crewOwnerTabsFixture(t, env.triggerLinkEnv)
-	if err := defaultProjectOwners().SetPrivate("work", "owner-tabs", false); err != nil {
-		t.Fatal(err)
-	}
+	shareCrewBotForTest(t, "Crew/owner-tabs", "other")
 	ownerCtx := internalBotRequestContext(context.Background(), "owner")
 	target := triggerTarget{Kind: triggerCallerCrew, Path: "Crew/owner-tabs", CrewID: "beta", CrewProfile: "work", CrewOwner: "owner"}
 	savedFunctionForTest(t, ownerCtx, target, crewFunction{Name: "run_login_flow", Description: "Log in", Instructions: "Log in."})

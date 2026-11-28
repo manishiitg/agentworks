@@ -23,6 +23,42 @@ import (
 type dashboardTarget struct {
 	Root, Kind, ID, Title string
 	Edit                  bool
+	// PageOnly: the caller has the dashboard but not the project (#4545). Only page reads accept such a target.
+	PageOnly bool
+}
+
+// dashboardPageActions are what a page-only caller may do: open, list and link the published pages.
+func dashboardPageAction(action string) bool {
+	return action == "get" || action == "list" || action == "link"
+}
+
+// dashboardPageTarget is dashboardTarget for reading the pages themselves: it also admits someone the project's
+// dashboard is shared with (people added or anyone at the company) as PageOnly. Never use it for anything but pages.
+func (api *StreamingAPI) dashboardPageTarget(ctx context.Context, claims *UserClaims, root string) (dashboardTarget, error) {
+	target, err := api.dashboardTarget(ctx, claims, root)
+	if err == nil || claims == nil {
+		return target, err
+	}
+	crew, ok := resolveCrewPath(ctx, claims.UserID, root)
+	if !ok || crew.Rest != "" || !crewPageAccess(claims, crew) {
+		return target, err
+	}
+	product, _, _ := projectProductForPath(crew.Root)
+	manifest, readErr := readCrewProjectManifests(ctx, product.ProfileID, crew.Root)
+	if readErr != nil {
+		return target, err
+	}
+	id, title := path.Base(crew.Root), path.Base(crew.Root)
+	if manifest.ID != "" {
+		id = manifest.ID
+	}
+	if displayTitle := manifest.displayTitle(); displayTitle != "" {
+		title = displayTitle
+	}
+	if claims.AccessToken != nil && !workspaceDashboardTokenAllows(claims, product.ProfileID, id) {
+		return target, err
+	}
+	return dashboardTarget{Root: crew.Root, Kind: "crew", ID: id, Title: title, PageOnly: true}, nil
 }
 
 func dashboardFailure(status int, message string) error {
@@ -204,7 +240,7 @@ func (api *StreamingAPI) resolveDashboardDocument(r *http.Request, root, p strin
 		return p, nil
 	}
 	claims := GetUserFromContext(r.Context())
-	target, err := api.dashboardTarget(r.Context(), claims, root)
+	target, err := api.dashboardPageTarget(r.Context(), claims, root)
 	// A preview token was minted after the ordinary target authorization.
 	draft := false
 	if claims != nil && claims.Scope == reportPreviewScope && claims.ScopeWorkspace == root && claims.PreviewConnectionID == "" {
@@ -281,6 +317,7 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		Limit           int               `json:"limit"`
 		Offset          int               `json:"offset"`
 		Mode            string            `json:"mode"`
+		Access          string            `json:"access"`
 		CreateDashboard bool              `json:"create_dashboard"`
 		SharedWithMe    bool              `json:"shared_with_me"`
 		PublishedOnly   bool              `json:"published_only"`
@@ -293,6 +330,15 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 	if decoder.Decode(&args) != nil || decoder.Decode(new(any)) != io.EOF {
 		externalError(w, 400, "invalid_arguments", "invalid dashboard request")
 		return
+	}
+	// The chat share tool speaks general access like share_dashboard (#4545); the screen sends the stored mode.
+	if args.Action == "share" && args.Access != "" {
+		mode, ok := dashboardShareMode(args.Access)
+		if !ok {
+			externalError(w, 400, "invalid_arguments", dashboardShareAccessHint)
+			return
+		}
+		args.Mode = mode
 	}
 	claims := GetUserFromContext(r.Context())
 	w.Header().Set("Cache-Control", "no-store")
@@ -312,6 +358,9 @@ func (api *StreamingAPI) handleDashboards(w http.ResponseWriter, r *http.Request
 		return
 	}
 	target, err := api.dashboardTarget(r.Context(), claims, args.Workspace)
+	if err != nil && dashboardPageAction(args.Action) {
+		target, err = api.dashboardPageTarget(r.Context(), claims, args.Workspace)
+	}
 	if err != nil {
 		if args.Action == "share" {
 			logDashboardShareRefusal(claims, dashboardTarget{Root: args.Workspace}, args.Mode, "target", err, nil)

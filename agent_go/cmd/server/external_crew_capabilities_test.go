@@ -34,6 +34,7 @@ func crewCapabilityHTTP(t *testing.T, f *externalToolsFixture, claims *UserClaim
 }
 func TestExternalCrewFileLifecycleOverMCP(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	f.write(t, externalCommandCrewRoot+"/code/report.md", "Old text\n")
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -87,6 +88,7 @@ func crewReader(user string) *UserClaims {
 func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 	t.Setenv("AGENTWORKS_STATE_ROOT", t.TempDir())
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("PUBLIC_URL", "")
 	gateway := newCrewConnectionVaultFixture(t)
 	f.api.mcpConfigPath = gateway.catalog
@@ -202,6 +204,7 @@ func TestExternalCrewConnectionsAndReferenceBounds(t *testing.T) {
 }
 func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	root := t.TempDir()
 	canonical, err := filepath.EvalSymlinks(root)
 	if err != nil {
@@ -244,6 +247,7 @@ func TestExternalCrewAccountFoldersRequireBroadConsent(t *testing.T) {
 // accounts, endpoint config and raw cache errors stay outside the response.
 func TestExternalCrewDiagnosticsOverMCP(t *testing.T) {
 	f, workspaceURL := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("AGENT_BROWSER_CDP_ENABLED", "false")
 	f.api.logger = loggerv2.NewNoop()
 	// Diagnostics now reads central Vault, never the retired personal store
@@ -447,9 +451,9 @@ func TestExternalCrewAutomationAuthoringOverMCP(t *testing.T) {
 	}
 	call("describe", map[string]any{"operation": "manage_schedules"})
 
-	for _, claims := range []*UserClaims{crewReader("owner"), crewWriter("other")} {
-		crewCapabilityHTTP(t, f, claims, "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)
-	}
+	// A run-only connection is refused the authoring; on a Mac nobody else reaches the project at all (#4545).
+	crewCapabilityHTTP(t, f, crewReader("owner"), "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 403)
+	crewCapabilityHTTP(t, f, crewWriter("other"), "workspace", map[string]any{"action": "automation_create", "kind": "script", "name": "Refused"}, 404)
 	guarded := crewWriter("owner")
 	guarded.AccessToken.FileGuard = &wf.FolderGuard{ReadPaths: []string{"code"}, WritePaths: []string{"code"}}
 	crewCapabilityHTTP(t, f, guarded, "workspace", map[string]any{"action": "automation_write", "workspace_path": root, "file": "main.py", "content": "no"}, 403)

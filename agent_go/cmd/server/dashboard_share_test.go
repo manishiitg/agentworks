@@ -30,7 +30,9 @@ func TestDashboardShareCreatesAndPublishesStandardDashboard(t *testing.T) {
 			claims := &UserClaims{UserID: "owner", Username: "owner"}
 			var w *httptest.ResponseRecorder
 			if mode == runSharePeople {
-				args["action"] = "set"
+				// MCP speaks general access (#4545): restricted with the people added.
+				delete(args, "mode")
+				args["action"], args["access"] = "set", "restricted"
 				args["workflow_id"] = "invoices"
 				w = f.call(t, "owner", "share", args)
 			} else {
@@ -88,11 +90,11 @@ func TestShareMCPKeepsExistingPermissions(t *testing.T) {
 		if user == "owner" {
 			token = readToken
 		}
-		call("share", user, token, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "private"}, 403)
+		call("share", user, token, map[string]any{"action": "set", "workflow_id": "invoices", "access": "restricted"}, 403)
 	}
-	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "flow_id": "invoices", "mode": "private"}, 400)
-	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "people", "emails": []string{"reader@example.com"}}, 200)
-	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "mode": "private"}, 200)
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "flow_id": "invoices", "access": "restricted"}, 400)
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "access": "restricted", "emails": []string{"reader@example.com"}}, 200)
+	call("share", "owner", writerToken, map[string]any{"action": "set", "workflow_id": "invoices", "access": "restricted"}, 200)
 	state := call("share", "owner", readToken, map[string]any{"action": "get", "workflow_id": "invoices"}, 200)
 	if state["mode"] != "private" {
 		t.Fatalf("Share did not save audience: %+v", state)
@@ -191,8 +193,8 @@ func TestResolveShareEmailsReportsUnknownEmails(t *testing.T) {
 	}
 }
 
-// A private Crew shared with named people opens for them and for nobody else.
-func TestPrivateCrewSharedWithNamedPeopleOpensOnlyForThem(t *testing.T) {
+// People added to a restricted project dashboard open its pages, never the project (#4545); nobody else opens either.
+func TestPrivateCrewDashboardPeopleOpenOnlyItsPages(t *testing.T) {
 	registry := newTestRegistry(t)
 	prev := defaultProjectOwnersOverride
 	defaultProjectOwnersOverride = registry
@@ -207,11 +209,11 @@ func TestPrivateCrewSharedWithNamedPeopleOpensOnlyForThem(t *testing.T) {
 	if err := registry.SetRunPeople("work", "demo-12345678", []string{"ann"}); err != nil {
 		t.Fatal(err)
 	}
-	if !crewSharedWith(root, "ann") {
-		t.Fatal("a named person must open a private Crew shared with them")
+	if !crewDashboardSharedWith(root, "ann") || crewSharedWith(root, "ann") {
+		t.Fatal("a person added to the dashboard must open its pages and not the project")
 	}
-	if crewSharedWith(root, "bob") {
-		t.Fatal("anyone not named must stay out of a private Crew")
+	if crewDashboardSharedWith(root, "bob") || crewSharedWith(root, "bob") {
+		t.Fatal("anyone not added must stay out of a restricted dashboard")
 	}
 }
 
@@ -248,11 +250,11 @@ func TestDashboardShareRequiresMainOwnerNotCoOwner(t *testing.T) {
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only the owner changes who can open these") {
 		t.Fatalf("member share: %d %s", w.Code, w.Body.String())
 	}
-	if crewSharedWithOthers(externalCommandCrewRoot) {
+	if crewDashboardOpenToCompany(externalCommandCrewRoot) {
 		t.Fatal("refused sharing changed the audience")
 	}
 	w = call("owner")
-	if w.Code != http.StatusOK || !crewSharedWithOthers(externalCommandCrewRoot) {
+	if w.Code != http.StatusOK || !crewDashboardOpenToCompany(externalCommandCrewRoot) {
 		t.Fatalf("owner share: %d %s", w.Code, w.Body.String())
 	}
 	owners := func(user, action string) *httptest.ResponseRecorder {

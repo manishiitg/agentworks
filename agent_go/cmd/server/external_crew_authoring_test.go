@@ -234,8 +234,9 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 	if code, _ := externalCrewRequest(t, env, boundedAlpha, "update_crew", map[string]any{"crew_id": "beta", "name": "x"}); code != 404 {
 		t.Fatalf("Crew outside the token bound must be not-found, got %d", code)
 	}
-	// Another person's Crew cannot be changed through authoring; gamma is shared for use, so it is visible and the
-	// change is forbidden rather than not found.
+	// Another person's Crew cannot be changed through authoring; gamma is shared for use through a bot, so it is
+	// visible and the change is forbidden rather than not found.
+	shareCrewBotForTest(t, linkGammaPath, "owner")
 	if code, _ := externalCrewRequest(t, env, crewWriter("owner"), "update_crew", map[string]any{"crew_id": "gamma", "name": "x"}); code != 403 {
 		t.Fatalf("another owner's Crew must be refused, got %d", code)
 	}
@@ -265,6 +266,7 @@ func TestExternalCrewAuthoringAccess(t *testing.T) {
 func TestWriteCrewFileOwnerAnywhereOthersOnlyTheirSharedFolder(t *testing.T) {
 	fixture, _ := newExternalCrewCommandFixture(t)
 	env := triggerLinkEnv{api: fixture.api}
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	owner := crewWriter("owner")
 	other := &UserClaims{UserID: "other", Username: "other", AccessToken: &accesstokens.Token{Name: "laptop", Scopes: []string{"crews:read", "crews:run"}, AllCrews: true}}
 

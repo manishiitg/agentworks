@@ -36,6 +36,8 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 		}
 		t.Run(label, func(t *testing.T) {
 			f, _ := newExternalCrewCommandFixture(t)
+			// The reader uses the project through a bot; its functions show on the live page for them (#4545).
+			shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 			owner := &UserClaims{UserID: "owner", Username: "owner"}
 			reader := &UserClaims{UserID: "other", Username: "other"}
 			ctx := context.WithValue(context.Background(), UserContextKey, owner)
@@ -186,6 +188,7 @@ func TestLiveDefaultDashboardTracksOnlyCallablePublishedFunctions(t *testing.T) 
 				t.Fatalf("custom browser view must keep its pinned source: %d %v", status, out)
 			}
 			op("share", map[string]any{"mode": "private"})
+			stopCrewBotForTest(t, externalCommandCrewRoot)
 			if status, _ := view(reader); status != http.StatusNotFound {
 				t.Fatalf("revoked browser view remained available: %d", status)
 			}

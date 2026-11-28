@@ -10,7 +10,6 @@ import { liveFeed } from '../../services/liveFeed'
 import { getRawActiveWorkspaceId } from '../../utils/desktopConnection'
 import { registerRemoteProject, registerRemoteSession } from '../../utils/remoteSessions'
 import { hasDesktopConnections, useConnectedWorkStore } from '../../stores/useConnectedWorkStore'
-import type { PublicLink, PublicLinkMode } from '../../components/workflow/PublicLinkControl'
 import { useAuthStore } from '../../stores/useAuthStore'
 import { useWorkspaceConnectionStore } from '../../stores/useWorkspaceConnectionStore'
 
@@ -329,16 +328,13 @@ export type TeamFolderListing = { folders: string[]; path: string; files: number
 export type CrewDashboardsTab = {
   workspace: string; intro: string; can_change: boolean; on_mac?: boolean; note?: string; filter: string
   filters: { key: string; label: string; count: number; hint?: string; ask?: string }[]
-  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; when?: string; group: string; can_delete?: boolean; can_share_team?: boolean; team_shared?: boolean; from_team?: boolean; public_link?: PublicLink }[]
+  items: { workspace?: string; id: string; title: string; path: string; kind: 'dashboard' | 'artifact' | 'motion'; line: string; who: string; when?: string; group: string; can_delete?: boolean; can_share_team?: boolean; team_shared?: boolean; from_team?: boolean }[]
   empty?: { title: string; line: string; kinds?: { name: string; line: string }[]; ask?: string; example?: string }
 }
 export function crewDashboardsTab(target: TeamTarget, kind: string): Promise<CrewDashboardsTab> {
   return teamRequest<CrewDashboardsTab>({ project: target.project, connection: target.connection }, `/dashboards-tab?kind=${encodeURIComponent(kind)}`)
 }
 /** One page's buttons on the Artifacts page: the server's dashboard tool decides who may do each. */
-export function teamPublicLink(target: TeamTarget, id: string, mode: PublicLinkMode): Promise<PublicLink> {
-  return teamRequest<PublicLink>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action: 'public_link', mode })
-}
 export function teamDashboardAction(target: TeamTarget, id: string, action: 'link' | 'delete' | 'undelete'): Promise<{ url?: string; deleted?: boolean }> {
   return teamRequest<{ url?: string; deleted?: boolean }>({ project: target.project, connection: target.connection }, '/dashboards/action', 'POST', { dashboard_id: id, action })
 }

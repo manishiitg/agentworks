@@ -4,12 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, FileText, Film, LayoutDashboard, Link2, MoreHorizontal, Search, Trash2, Users, type LucideIcon } from 'lucide-react'
 import { HtmlRenderer } from '../../components/ui/HtmlRenderer'
 import { Button } from '../../components/ui/Button'
-import { PublicLinkControl } from '../../components/workflow/PublicLinkControl'
 import { selectReportDocument } from '../../components/workflow/reportDocuments'
-import { DashboardPeopleCard, teamCard } from './TeamTab'
+import { teamCard } from './TeamTab'
 import { fillMainDraft } from '../../utils/agentPurposeDraft'
 import { useChatStore } from '../../stores/useChatStore'
-import { crewDashboardsTab, teamArtifactPage, teamDashboardAction, teamFailure, teamPublicLink, teamShareArtifact, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
+import { crewDashboardsTab, teamArtifactPage, teamDashboardAction, teamFailure, teamShareArtifact, useTeamTab, type CrewDashboardsTab as DashboardsTab, type TeamTarget } from './teamApi'
 
 const kindIcon: Record<string, LucideIcon> = { dashboard: LayoutDashboard, artifact: FileText, motion: Film }
 type Item = DashboardsTab['items'][number]
@@ -162,7 +161,6 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
                 <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void open(item) }}>Open</button>
                 {!item.from_team && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void copyLink(item) }}>Copy link</button>}
                 {item.can_share_team && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left hover:bg-muted" onClick={() => { setMenu(''); void shareWithTeam(item, !item.team_shared) }}>{item.team_shared ? 'Remove from Team' : 'Share with Team'}</button>}
-                {item.public_link && where && <div className="px-2 py-1"><PublicLinkControl link={item.public_link} change={mode => teamPublicLink(where, item.id, mode)} /></div>}
                 {item.can_delete && <button type="button" role="menuitem" className="block w-full rounded px-2 py-1 text-left text-destructive hover:bg-muted" onClick={() => { setMenu(''); void remove(item) }}>Delete</button>}
               </div>}
             </div>
@@ -170,6 +168,5 @@ export function CrewDashboardsTab({ projectId }: { projectId: string }) {
         })}
       </div>
     </section>
-    {where && tab && <DashboardPeopleCard target={where} />}
   </div>
 }

@@ -50,6 +50,7 @@ func TestCrewChatContextMCPUsesSameSourceAndDestinationGuardsAndOrdinaryUploads(
 			c.JSON(200, out)
 		})
 	})
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	const conversation = "team:chat:root-owner"
 	const session = "context-owner-session"
 	f.write(t, externalCommandCrewSettings+"/product.json", `{"schema_version":1,"product":"work","id":"team","title":"Test Team","main_chat_key":"`+conversation+`"}`)

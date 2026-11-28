@@ -81,8 +81,9 @@ func listCrewProjectsForOwner(ctx context.Context, userID, ownerID, query string
 		if !projectDiscoveryRootIsCurrent(strings.TrimSuffix(candidate, "/product.json")) {
 			continue
 		}
-		// Another owner's Crew is listed only while it is shared with others (not made private, sharing on).
-		if access != "owner" && !crewSharedWith(strings.TrimSuffix(candidate, "/product.json"), userID) && !crewIsCoOwner(strings.TrimSuffix(candidate, "/product.json"), userID) {
+		// Another owner's Crew is listed for its People and for people one of its bots admits (Run mode, #4545); its
+		// dashboard's audience opens only the pages.
+		if projectRoot := strings.TrimSuffix(candidate, "/product.json"); access != "owner" && !crewSharedWith(projectRoot, userID) && !crewBotAdmitsAny(projectRoot, sanitizeUserIDForPath(userID)) {
 			continue
 		}
 		raw, found, readErr := store.read(ctx, candidate)

@@ -474,10 +474,8 @@ func crewExecutableKnowledgeAudience(root string, manifest workflowkb.Manifest) 
 		}{}
 	}
 	manifest.Access.Owners = append([]string{record.OwnerID}, crewCoOwnerIDs(binding.CrewRoot)...)
+	// Its People (main owner, co-owners, Users, Teams) are its owners above; the dashboard's audience opens pages only (#4545).
 	manifest.Access.Readers = nil
-	if projectSharingEnabled() {
-		manifest.Access.Readers = append([]string{}, record.RunPeople...)
-	}
-	manifest.Everyone = crewSharedWithOthers(binding.CrewRoot)
+	manifest.Everyone = false
 	return manifest, nil
 }

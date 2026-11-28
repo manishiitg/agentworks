@@ -18,6 +18,7 @@ import (
 // A shared Crew needs no saved dashboard to open that conversation.
 func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
+	shareCrewBotForTest(t, externalCommandCrewRoot, "other")
 	t.Setenv("AUTH_SECRET", "project-chat-ownership-test-secret")
 	f.api.eventStore = storeevents.NewEventStore(50)
 	router := mux.NewRouter()
@@ -68,15 +69,9 @@ func TestProjectAskConversationKeepsCrewCallerOwnership(t *testing.T) {
 	if status, none := call("other"); status != 200 || none["choose_agent"] != true || len(none["agents"].([]any)) != 0 {
 		t.Fatalf("unshared agent exposed: %d %v", status, none)
 	}
+	// The owner shares the chosen agent as a bot for this colleague (#4545).
 	selectedAgent = "team:chat:chosen"
-	identity, _ := projectIdentityOf(externalCommandCrewRoot)
-	if err = defaultProjectOwners().modify(func(projects map[string]projectOwnerRecord) (bool, error) {
-		id := projectOwnerKey(identity.Product, identity.Folder)
-		record := projects[id]
-		record.SharedAgents = []string{selectedAgent}
-		projects[id] = record
-		return true, nil
-	}); err != nil {
+	if err := writeCrewBot(externalCommandCrewRoot, selectedAgent, &crewBot{Maker: "owner", People: []string{"other"}}); err != nil {
 		t.Fatal(err)
 	}
 	status, owner := call("owner")

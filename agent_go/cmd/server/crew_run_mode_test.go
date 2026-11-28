@@ -641,6 +641,8 @@ func newCrewRunModeFixture(t *testing.T) *crewRunModeFixture {
 	withMemoryUserDirectory(t, `{"users":[{"id":"owner","username":"aman","can_create":true},{"id":"reader","username":"vaibhav","can_create":true},{"id":"stranger","username":"stranger","can_create":true}]}`)
 	registerTestCrew(t, "alpha", "owner", true, "crew-aaa")
 	registerTestCrew(t, "beta", "reader", true, "crew-bbb")
+	// The reader uses Alpha in Run mode through a bot; its open dashboard alone would give its pages only (#4545).
+	shareCrewBotForTest(t, crewRunModeOwnerRoot, "reader")
 
 	shared := NewWorkflowManifest("Shared")
 	shared.CreatedBy = "owner"
@@ -801,6 +803,9 @@ func TestReaderResolveLeavesOwnerManifestUntouched(t *testing.T) {
 
 func TestListSharedProjects(t *testing.T) {
 	fx := newCrewRunModeFixture(t)
+	// The list holds the Crews the caller works in (co-owners and Users); bots and dashboards are reached elsewhere.
+	joinCrewTeam(t, "alpha", "reader")
+	joinCrewTeam(t, "beta", "owner")
 
 	get := func(caller string) (int, []byte) {
 		req := mux.SetURLVars(profileRouteRequest(http.MethodGet, "/api/agent-profiles/work/shared-projects", nil, caller), map[string]string{"id": "work"})
@@ -841,9 +846,7 @@ func TestListSharedProjects(t *testing.T) {
 		}
 	}
 
-	// Visibility is universal for product holders: the owner sees the
-	// reader's crew too, and a stranger with no shared workflows sees
-	// both crews.
+	// The owner sees the reader's Crew they co-own; a stranger who works in neither sees none.
 	code, body = get("owner")
 	if code != http.StatusOK {
 		t.Fatalf("owner list status = %d", code)
@@ -863,13 +866,14 @@ func TestListSharedProjects(t *testing.T) {
 	if err := json.Unmarshal(body, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if len(decoded.Projects) != 2 {
+	if len(decoded.Projects) != 0 {
 		t.Fatalf("stranger projects = %+v", decoded.Projects)
 	}
 }
 
 func TestListSharedProjectsDeduplicatesWorkspaceListing(t *testing.T) {
 	fx := newCrewRunModeFixture(t)
+	joinCrewTeam(t, "alpha", "reader")
 	// The live workspace API returns the requested root with nested projects
 	// and repeats each project folder as a top-level item.
 	ws := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

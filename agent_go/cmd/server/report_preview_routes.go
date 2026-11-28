@@ -184,7 +184,8 @@ func reportPreviewReadable(r *http.Request, claims *UserClaims, workspacePath st
 	// Run mode (crewAccessFor), the same rule report runs use.
 	if claims != nil {
 		if ref, ok := resolveCrewPath(r.Context(), claims.UserID, workspacePath); ok && ref.Rest == "" {
-			if crewAccessFor(claims, ref) == crewAccessNone {
+			// Dashboard pages and their live data: the dashboard's audience reads them too (#4545).
+			if !crewPageAccess(claims, ref) {
 				return errWorkspaceReadDenied
 			}
 			return nil
@@ -194,6 +195,15 @@ func reportPreviewReadable(r *http.Request, claims *UserClaims, workspacePath st
 		return errWorkspaceReadDenied
 	}
 	return nil
+}
+
+// reportPreviewPageOnly says the caller opens the project's dashboard but has no access to the project (#4545).
+func reportPreviewPageOnly(r *http.Request, claims *UserClaims, workspacePath string) bool {
+	if claims == nil || claims.Scope == reportPreviewScope {
+		return false
+	}
+	ref, ok := resolveCrewPath(r.Context(), claims.UserID, workspacePath)
+	return ok && ref.Rest == "" && crewAccessFor(claims, ref) == crewAccessNone
 }
 
 // errWorkspaceReadDenied is a named workspace the caller may not read.
@@ -238,6 +248,12 @@ func (api *StreamingAPI) handleReportPreviewFile(w http.ResponseWriter, r *http.
 	relative, ok := reportPreviewAllowedPath(r.URL.Query().Get("path"))
 	if !ok {
 		http.Error(w, "Choose a file in the dashboard data folders, or the project MEMORY.md or workflow.json.", http.StatusBadRequest)
+		return
+	}
+	// Someone with the dashboard but not the project reads the page's own data only (db/), not its knowledge, memory or
+	// plans (#4545).
+	if !strings.HasPrefix(relative, "db/") && reportPreviewPageOnly(r, claims, workspacePath) {
+		http.Error(w, "This dashboard can show only its own data.", http.StatusForbidden)
 		return
 	}
 	document := relative

@@ -556,7 +556,7 @@ func crewAccessPeopleDetail(f crewAccessFacts) string {
 // crewAccessDashboardDetail is the dashboard's general access, worded like a Drive file's (#4545).
 func crewAccessDashboardDetail(ctx context.Context, claims *UserClaims, project, root string) string {
 	detail := "Restricted"
-	if crewSharedWithOthers(root) {
+	if crewDashboardOpenToCompany(root) {
 		detail = "Anyone at the company with the link"
 	} else if rec, ok := crewOwnerRecordAt(root); ok && len(rec.RunPeople) > 0 {
 		detail = fmt.Sprintf("Restricted · %d %s added", len(rec.RunPeople), plural(len(rec.RunPeople), "person", "people"))
