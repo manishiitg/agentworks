@@ -23,7 +23,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 		return crewPanelRead(r.WithContext(ctx), handler, http.MethodGet, route, vars, query, nil, out)
 	}
 	sources := []crewPanelSource{
-		{id: "sharing", title: "Sharing", allowed: dashboardScopeAllowed(claims, "share_status"), read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "sharing", title: "Sharing", allowed: dashboardScopeAllowed(claims, "share_status"), refreshFor: 15 * time.Second, background: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			detail, shared, err := api.crewDashboardSharing(r.WithContext(ctx), workspace)
 			return crewPanelSection{Detail: detail, shared: shared}, err
 		}},
@@ -126,7 +126,7 @@ func (api *StreamingAPI) crewPanelSources(r *http.Request, project, workspace st
 			}
 			return section, nil
 		}},
-		{id: "dashboards", title: "Artifacts", allowed: dashboardScopeAllowed(claims, "list"), read: func(ctx context.Context) (crewPanelSection, error) {
+		{id: "dashboards", title: "Artifacts", allowed: dashboardScopeAllowed(claims, "list"), refreshFor: 15 * time.Second, background: true, read: func(ctx context.Context) (crewPanelSection, error) {
 			section := crewPanelSection{}
 			// The native catalog already includes both authored HTML and managed dashboards.
 			for offset := 0; ; {

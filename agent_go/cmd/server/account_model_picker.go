@@ -13,6 +13,7 @@ import (
 	"unicode"
 
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/agycli"
+	"golang.org/x/sync/singleflight"
 )
 
 // accountModelLister is how one program lists the models a signed-in account
@@ -36,13 +37,24 @@ var accountModelListers = map[string]accountModelLister{
 
 var accountModelCatalog = struct {
 	sync.Mutex
-	models  map[string][]dynamicModelEntry
-	fetched map[string]time.Time
-}{models: make(map[string][]dynamicModelEntry), fetched: make(map[string]time.Time)}
+	models     map[string][]dynamicModelEntry
+	fetched    map[string]time.Time
+	refreshing map[string]bool
+}{
+	models:     make(map[string][]dynamicModelEntry),
+	fetched:    make(map[string]time.Time),
+	refreshing: make(map[string]bool),
+}
 
-// accountModelsFresh is how long an account's own list is reused: listing runs the CLI (agy takes seconds), and
-// every model menu and account card asks for it. A plan change shows up after this.
-const accountModelsFresh = 10 * time.Minute
+var accountModelFetchGroup singleflight.Group
+
+// accountModelsFresh is how long an account's own list is reused without
+// refreshing; accountModelsStale is how long a cached list can still be served
+// immediately while refreshing in the background (#4576).
+var (
+	accountModelsFresh = 10 * time.Minute
+	accountModelsStale = 2 * time.Hour
+)
 
 // The product picker discovers the selected account, never another account's
 // cached inventory. Admission and allowed-model rules are the execution rules.
@@ -78,16 +90,69 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 		return
 	}
 	cacheKey := id + "\x00" + target.Home + "\x00" + spec.command + "\x00" + strings.Join(spec.args, "\x00")
+	forceRefresh := r.URL.Query().Get("refresh") == "true" || r.URL.Query().Get("force") == "true"
 	accountModelCatalog.Lock()
 	cached, fetchedAt := accountModelCatalog.models[cacheKey], accountModelCatalog.fetched[cacheKey]
-	accountModelCatalog.Unlock()
 	var models []dynamicModelEntry
-	if len(cached) > 0 && time.Since(fetchedAt) < accountModelsFresh {
-		models = append([]dynamicModelEntry(nil), cached...)
-	} else {
-		out, runErr := runProviderAccountCommand(ctx, target, spec, 20*time.Second)
-		if models = lister.parse(out); runErr != nil {
-			models = nil
+	usedCached := false
+	triggerBG := false
+	if !forceRefresh && len(cached) > 0 && !fetchedAt.IsZero() {
+		age := time.Since(fetchedAt)
+		if age < accountModelsFresh {
+			models = append([]dynamicModelEntry(nil), cached...)
+			usedCached = true
+		} else if age < accountModelsStale {
+			models = append([]dynamicModelEntry(nil), cached...)
+			usedCached = true
+			if !accountModelCatalog.refreshing[cacheKey] {
+				accountModelCatalog.refreshing[cacheKey] = true
+				triggerBG = true
+			}
+		}
+	}
+	accountModelCatalog.Unlock()
+
+	if triggerBG {
+		go func(key string, t providerAccountTarget, s providerSetupCommand, parse func(string) []dynamicModelEntry) {
+			defer func() {
+				accountModelCatalog.Lock()
+				delete(accountModelCatalog.refreshing, key)
+				accountModelCatalog.Unlock()
+			}()
+			bgCtx, bgCancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer bgCancel()
+			val, _, _ := accountModelFetchGroup.Do(key, func() (any, error) {
+				out, runErr := runProviderAccountCommand(bgCtx, t, s, 20*time.Second)
+				if runErr != nil {
+					return []dynamicModelEntry(nil), nil
+				}
+				return parse(out), nil
+			})
+			refreshed, _ := val.([]dynamicModelEntry)
+			accountModelCatalog.Lock()
+			if len(refreshed) > 0 {
+				accountModelCatalog.models[key] = append([]dynamicModelEntry(nil), refreshed...)
+				accountModelCatalog.fetched[key] = time.Now()
+			} else {
+				// Clear fetched timestamp so a signed-out account surfaces on the next check (PLAT-872-64).
+				accountModelCatalog.fetched[key] = time.Time{}
+			}
+			accountModelCatalog.Unlock()
+		}(cacheKey, target, spec, lister.parse)
+	}
+
+	if !usedCached {
+		val, _, _ := accountModelFetchGroup.Do(cacheKey, func() (any, error) {
+			fetchCtx, fetchCancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+			defer fetchCancel()
+			out, runErr := runProviderAccountCommand(fetchCtx, target, spec, 20*time.Second)
+			if runErr != nil {
+				return []dynamicModelEntry(nil), nil
+			}
+			return lister.parse(out), nil
+		})
+		if fetched, ok := val.([]dynamicModelEntry); ok && len(fetched) > 0 {
+			models = append([]dynamicModelEntry(nil), fetched...)
 		}
 	}
 	// PLAT-872-64: losing SDK authentication must not erase the account's
@@ -104,7 +169,7 @@ func (api *StreamingAPI) handleAccountModelPicker(w http.ResponseWriter, r *http
 		if configured, ok := cachedProviderAccountConfigured(id); ok && configured != nil && !*configured {
 			detail = lister.name + " — sign in again in Providers. Models are shown for reference."
 		}
-	} else if len(cached) == 0 || time.Since(fetchedAt) >= accountModelsFresh {
+	} else if !usedCached {
 		accountModelCatalog.models[cacheKey] = append([]dynamicModelEntry(nil), models...)
 		accountModelCatalog.fetched[cacheKey] = time.Now()
 	}
