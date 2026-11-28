@@ -214,7 +214,6 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       }
     }
     const row = (agentsExpanded?: boolean, onToggleAgents?: () => void, activityLabel?: string, activityTitle?: string, expand?: () => void) => <SidebarProjectRow {...rest} agentsExpanded={agentsExpanded} onToggleAgents={onToggleAgents} activityLabel={agentsExpanded === false || activityTitle ? activityLabel : undefined} activityTitle={activityTitle}
-      showIcon={project.kind !== 'crew' || project.mode === 'run'}
       onMoveUp={pinnedShortcut && canPin && pinnedIndex > 0 ? () => move(-1) : undefined} onMoveDown={pinnedShortcut && canPin && pinnedIndex >= 0 && pinnedIndex < pinnedRows.length - 1 ? () => move(1) : undefined}
       selected={isOpenProject(project)}
       location={desktop && connection.id !== 'local' ? connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop} serverLine={desktop && connection.id !== 'local' ? serverLineFor(project, connection) : undefined}
