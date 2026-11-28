@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"sync"
+
+	"github.com/manishiitg/mcpagent/agent/codeexec"
 )
 
 // Your own keys in your own chat (owner, 26 Nov, #4165): in an online project the person typing also gets the keys in
@@ -102,10 +104,11 @@ func (api *StreamingAPI) withOwnChatKeys(ctx context.Context, person, workspaceP
 }
 
 // Your own sign-in apps in your own chat (#4165): the apps in the typing person's personal vault join an online
-// project's turn the same way their keys do. A turn is marked when it starts (markOwnChatTurn); the app list is built
-// from that mark, and a chat built with someone's own apps is rebuilt before a turn they did not type
-// (vaultAppsReloadDue). The project's app wins over one of yours for the same service, and your own apps are always
-// started and called as you, never as the project's owner.
+// project's turn the same way their keys do. A turn is marked when it starts (markOwnChatTurn); the session's agent
+// keeps those personal apps wired with OwnApp delegation tokens, and per-call guards (installOwnChatAppServerGuard
+// for discovery/schema lookup and handleVaultRuntimeMCP for execution) hide and refuse them on any turn the person did
+// not type — without restarting the coding CLI or losing the prompt cache (#4560). The project's app wins over one of
+// yours for the same service, and your own apps are always started and called as you, never as the project's owner.
 
 var ownChatTurns sync.Map // session -> person, while the current turn is one they typed in an online project
 
@@ -124,6 +127,29 @@ func ownChatTurnPerson(sessionID string) string {
 	person, _ := ownChatTurns.Load(sessionID)
 	s, _ := person.(string)
 	return s
+}
+
+// installOwnChatAppServerGuard gates personal Vault app servers on sessionID so
+// search_tools and get_api_spec only surface them on turns ownPerson actually
+// typed, allowing the coding CLI to stay warm across typed and automated turns (#4560).
+func installOwnChatAppServerGuard(sessionID, ownPerson string, ownServers map[string]bool) {
+	if strings.TrimSpace(sessionID) == "" {
+		return
+	}
+	if len(ownServers) == 0 || strings.TrimSpace(ownPerson) == "" {
+		codeexec.SetSessionServerGuard(sessionID, nil)
+		return
+	}
+	guarded := make(map[string]bool, len(ownServers))
+	for name := range ownServers {
+		guarded[name] = true
+	}
+	codeexec.SetSessionServerGuard(sessionID, func(serverName string) bool {
+		if !guarded[serverName] && !guarded[vaultSelectionName(serverName)] {
+			return true
+		}
+		return ownChatTurnPerson(sessionID) == ownPerson
+	})
 }
 
 type ownChatAppsKey struct{}
@@ -158,11 +184,20 @@ func personalVaultAppIDs(ctx context.Context, person string) map[string]bool {
 	return ids
 }
 
-// addOwnChatApps adds, for a turn the person typed in an online project's chat, the apps in their personal vault to
-// the project's picks. reader is whose inventory rows came from: a User's turn reads the project vault as its owner, so
-// their own apps are read as themselves and added to the rows here (never to the owner's cached inventory).
+// addOwnChatApps adds, for a live turn the person typed in an online project's chat, the apps in their personal vault.
 func addOwnChatApps(ctx context.Context, sessionID, reader string, rows []vaultRuntimeServer, names []string) (context.Context, []vaultRuntimeServer, []string) {
 	person := ownChatTurnPerson(sessionID)
+	if person == "" {
+		return ctx, rows, names
+	}
+	return addOwnChatAppsForPerson(ctx, sessionID, person, reader, rows, names)
+}
+
+// addOwnChatAppsForPerson adds person's personal vault apps to an online project's chat picks.
+// reader is whose inventory rows came from: a User's turn reads the project vault as its owner, so
+// their own apps are read as themselves and added to the rows here (never to the owner's cached inventory).
+func addOwnChatAppsForPerson(ctx context.Context, sessionID, person, reader string, rows []vaultRuntimeServer, names []string) (context.Context, []vaultRuntimeServer, []string) {
+	person = strings.TrimSpace(person)
 	if person == "" {
 		return ctx, rows, names
 	}

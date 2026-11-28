@@ -94,7 +94,38 @@ type ToolRegistry struct {
 var (
 	globalRegistry *ToolRegistry
 	registryMu     sync.Mutex
+
+	sessionServerGuardsMu sync.RWMutex
+	sessionServerGuards   = map[string]func(serverName string) bool{}
 )
+
+// SetSessionServerGuard installs a live per-session check deciding whether an
+// MCP server is visible to discovery and schema lookup on the current turn.
+// Pass nil to clear the guard for sessionID.
+func SetSessionServerGuard(sessionID string, guard func(serverName string) bool) {
+	if sessionID == "" {
+		return
+	}
+	sessionServerGuardsMu.Lock()
+	defer sessionServerGuardsMu.Unlock()
+	if guard == nil {
+		delete(sessionServerGuards, sessionID)
+		return
+	}
+	sessionServerGuards[sessionID] = guard
+}
+
+// IsSessionServerAllowed returns true unless sessionID installed a live server
+// guard that hides serverName on the current turn.
+func IsSessionServerAllowed(sessionID, serverName string) bool {
+	if sessionID == "" {
+		return true
+	}
+	sessionServerGuardsMu.RLock()
+	guard := sessionServerGuards[sessionID]
+	sessionServerGuardsMu.RUnlock()
+	return guard == nil || guard(serverName)
+}
 
 // InitRegistry initializes the global tool registry from an agent
 func InitRegistry(mcpClients map[string]mcpclient.ClientInterface, customTools map[string]func(ctx context.Context, args map[string]interface{}) (string, error), toolToServer map[string]string, logger loggerv2.Logger) {
@@ -871,6 +902,7 @@ func CleanupSession(sessionID string) {
 		delete(registry.sessionToolAllowLists, sessionID)
 	}
 	registry.allowListMu.Unlock()
+	SetSessionServerGuard(sessionID, nil)
 
 	if registry.logger != nil {
 		registry.logger.Info("Cleaned up session-scoped tools",

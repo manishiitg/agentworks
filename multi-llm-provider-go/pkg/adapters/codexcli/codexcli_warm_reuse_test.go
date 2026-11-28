@@ -103,6 +103,23 @@ func TestCodexWarmConfigRefreshResumesThreadWithoutRelaunch(t *testing.T) {
 	if pending.Kind == instructions.None || entry["kind"] != "application" || !strings.HasSuffix(entry["value"].(string), "trusted third") {
 		t.Fatalf("pending instructions = %+v, context = %+v", pending, entry)
 	}
+	// #4560: toggling attended/unattended question availability, launch-only,
+	// launch system prompt, or attached skills must reuse the warm thread without
+	// calling thread/resume.
+	attendedCtx := llmtypes.WithCodingAgentQuestionHandler(context.Background(), "codex-cli", "warm-regression", func(_ context.Context, _ map[string]any) (string, error) {
+		return `{"status":"answered","answers":[]}`, nil
+	})
+	llmtypes.WithCodingProviderLaunchSystemPrompt("trusted third")(opts)
+	llmtypes.WithAttachedSkills([]*llmtypes.Skill{{Name: "sample-skill", Content: "body"}})(opts)
+	if _, err := adapter.generateContentAppServer(attendedCtx, []llmtypes.MessageContent{llmtypes.TextPart(llmtypes.ChatMessageTypeSystem, "trusted third")}, opts); err != nil {
+		t.Fatal(err)
+	}
+	if launches != 1 || len(loads) != 2 {
+		t.Fatalf("attended turn or skill/prompt metadata reloaded the thread: launches=%d loads=%d", launches, len(loads))
+	}
+	if loads[0]["approvalPolicy"] != "on-request" || loads[0]["config"].(map[string]any)["features.default_mode_request_user_input"] != true {
+		t.Fatalf("thread/start did not keep stable question/approval config: %+v", loads[0])
+	}
 	// Bridge credentials belong to thread configuration, not the child env.
 	WithMCPServers(`{"api-bridge":{"command":"mcpbridge","env":{"MCP_API_URL":"https://example.com/two","MCP_API_TOKEN":"renewed-bridge-token"}}}`)(opts)
 	run("trusted second")
