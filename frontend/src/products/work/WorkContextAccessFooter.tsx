@@ -172,7 +172,7 @@ export function WorkContextAccessFooter({
     {visibleItems.map(item => <div key={item.id}>
       {item.id === 'mcp:artifacts' && artifactLines.length ? renderTreeLines(artifactLines) : renderAccessRow(item)}
       {item.id === 'mcp:team' ? (access?.co_owners ? renderTreeLines(teamLines) : teamTree) : null}
-      {item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && setupsCount > 0 ? <Row icon={ListChecks} detail={setupsToDo ? `${setupsToDo} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}
+      {item.id === 'mcp:team' && !access?.co_owners && !selectedPerson && showTeam && setupsCount > 0 ? <Row icon={ListChecks} detail={setupsToDo ? `${setupsToDo} to do` : 'All done'} onClick={() => { console.info('[TEAM_SETUP]', { event: 'open', project: projectId }); openCrewAccess(projectId, '', 'team', 'setups') }}>Team kit</Row> : null}
     </div>)}
   </div>
 }
