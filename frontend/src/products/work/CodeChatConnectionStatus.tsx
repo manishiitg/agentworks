@@ -7,6 +7,9 @@ import { useChatStore } from '../../stores/useChatStore'
 import { desktopRequest } from '../../services/desktopConnections'
 import { remoteProjectConnection } from '../../utils/remoteSessions'
 
+// Server projects this app already asked to link Downloads for, once per run of the app.
+const downloadsAsked = new Set<string>()
+
 export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
   const { project, profile } = useChatStore(useShallow(state => {
     const tab = Object.values(state.chatTabs).find(item => item.sessionId === sessionId)
@@ -27,6 +30,15 @@ export function CodeChatConnectionStatus({ sessionId }: { sessionId: string }) {
     if (connection) void desktopRequest<{ device_id: string }>(`/${encodeURIComponent(connection)}/this-mac`).then(result => { if (active) setThisMac(result.device_id) }).catch(() => undefined)
     return () => { active = false }
   }, [connection])
+  // Opening a server project here links this Mac's Downloads (Read) for the person, like this Mac's own projects
+  // (owner, 28 Nov, #4504). The Mac app's backend decides: only when nothing is saved for the project yet.
+  useEffect(() => {
+    const key = connection && project ? `${connection}/${project}` : ''
+    if (!key || downloadsAsked.has(key)) return
+    downloadsAsked.add(key)
+    void desktopRequest<{ linked: boolean }>(`/${encodeURIComponent(connection!)}/this-mac/downloads?project=${encodeURIComponent(project!)}`, 'POST')
+      .then(result => { if (result.linked) window.dispatchEvent(new Event('crew-laptop-settings-changed')) }).catch(() => undefined)
+  }, [connection, project])
   useEffect(() => {
     let active = true
     setComputer('')

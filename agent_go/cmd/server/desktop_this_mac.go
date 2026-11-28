@@ -11,6 +11,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"github.com/gorilla/mux"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
+	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/common"
 	"github.com/manishiitg/coding-agent-loop/workspace/localfiles"
 )
 
@@ -292,6 +294,99 @@ func (api *StreamingAPI) handleThisMac(w http.ResponseWriter, r *http.Request) {
 		status = "not_connected"
 	}
 	desktopJSON(w, map[string]string{"device_id": device, "status": status})
+}
+
+// handleThisMacDownloads links the person's Downloads folder (Read) to a server project opened in this Mac app (owner,
+// 28 Nov), as this Mac's own projects already have it (mac_downloads_access.go), so files saved there reach the
+// project's agent without a settings screen. It does so only when the person has no computer saved for that project
+// yet and has not removed Downloads on this Mac; a saved choice, even one with no folders, is never changed.
+func (api *StreamingAPI) handleThisMacDownloads(w http.ResponseWriter, r *http.Request) {
+	if !desktopConnectionGate(w, r) {
+		return
+	}
+	owner := GetUserFromContext(r.Context()).UserID
+	connection := mux.Vars(r)["connection"]
+	project := strings.TrimSpace(r.URL.Query().Get("project"))
+	if !localfiles.ValidID(project) {
+		http.Error(w, `{"error":"Name a project."}`, 400)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	linked, err := api.linkThisMacDownloads(ctx, owner, connection, project)
+	if err != nil {
+		log.Printf("[THIS_MAC] connection=%s project=%s event=downloads_not_linked err=%v", connection, project, err)
+	}
+	desktopJSON(w, map[string]bool{"linked": linked})
+}
+
+func (api *StreamingAPI) linkThisMacDownloads(ctx context.Context, owner, connection, project string) (bool, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, err
+	}
+	downloads := filepath.Join(home, "Downloads")
+	if common.HostDownloadsRemoved.Load() {
+		return false, nil
+	}
+	if info, err := os.Stat(downloads); err != nil || !info.IsDir() {
+		return false, nil
+	}
+	c, err := desktopConnectionFor(owner, connection)
+	if err != nil {
+		return false, err
+	}
+	settingsURL := strings.TrimRight(c.Server, "/") + "/api/agent-profiles/work/projects/" + url.PathEscape(project) + "/laptop"
+	call := func(method string, body any) (*crewLaptopSettings, int, error) {
+		var reader io.Reader
+		if body != nil {
+			raw, _ := json.Marshal(body)
+			reader = bytes.NewReader(raw)
+		}
+		req, err := http.NewRequestWithContext(ctx, method, settingsURL, reader)
+		if err != nil {
+			return nil, 0, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := desktopServerDo(desktopHTTPClient(), owner, c, req)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer resp.Body.Close()
+		var out crewLaptopSettings
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
+		if resp.StatusCode != http.StatusOK {
+			return nil, resp.StatusCode, fmt.Errorf("the server answered %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		}
+		return &out, resp.StatusCode, json.Unmarshal(raw, &out)
+	}
+	saved, status, err := call(http.MethodGet, nil)
+	if status == http.StatusForbidden || status == http.StatusNotFound {
+		return false, nil // not this person's project to connect a computer to
+	}
+	if err != nil {
+		return false, err
+	}
+	if saved.DeviceID != "" || len(saved.Folders) > 0 {
+		return false, nil
+	}
+	device, err := api.ensureThisMac(ctx, owner, connection)
+	if err != nil {
+		return false, err
+	}
+	// The server checks the folder on the computer before saving it, so wait until this Mac is online.
+	for thisMacStatus(connection) != "online" {
+		select {
+		case <-ctx.Done():
+			return false, errors.New("this Mac did not come online in time")
+		case <-time.After(250 * time.Millisecond):
+		}
+	}
+	if _, _, err := call(http.MethodPut, crewLaptopSettings{DeviceID: device, Folders: []localfiles.FolderSelection{{Path: downloads, Access: "read"}}}); err != nil {
+		return false, err
+	}
+	log.Printf("[THIS_MAC] connection=%s project=%s device=%s event=downloads_linked", connection, project, device)
+	return true, nil
 }
 
 var gitHubRepoPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
