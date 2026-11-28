@@ -40,7 +40,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	var input struct {
 		Action string           `json:"action"`
 		Agents []macSharedAgent `json:"agents"`
-		Key    string           `json:"key,omitempty"`
 	}
 	if r.Method == http.MethodGet {
 		input.Action = "status"
@@ -51,9 +50,9 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	id := mux.Vars(r)["project"]
 	switch input.Action {
 	// Moving a Crew or an agent to the server is removed (owner, 13 and 17 Nov).
-	case "status", "relay", "offline", "agents", "share_agents", "public", "only_my_agents":
+	case "status", "relay", "offline", "agents", "share_agents":
 	default:
-		externalError(w, 400, "invalid_action", "Choose status, relay, offline, agents, share_agents, public or only_my_agents.")
+		externalError(w, 400, "invalid_action", "Choose status, relay, offline, agents or share_agents.")
 		return
 	}
 	roots, err := api.crewSyncRoots(r.Context(), claims, id)
@@ -139,16 +138,6 @@ func (api *StreamingAPI) runDesktopCrewSync(w http.ResponseWriter, r *http.Reque
 	}
 	// Shared agents (PLAT-856-509): "agents" lists this Crew's side tabs and which are shared; "share_agents" saves the
 	// owner's choice here and on the online copy, which decides who may message them.
-	// Public on AgentBridge for one agent (key: its tab), on the Mac online tab (owner, 6 Nov): the same server path as
-	// the owner's chat (crew_access_chat.go), so its checks (a purpose first) are the same.
-	if input.Action == "public" || input.Action == "only_my_agents" {
-		if _, err := api.crewAccessChatAction(r.Context(), roots.ID, input.Action, map[string]any{"agent": input.Key}); err != nil {
-			externalError(w, 409, "agentbridge_failed", err.Error())
-			return
-		}
-		externalJSON(w, map[string]any{"project_id": roots.ID})
-		return
-	}
 	if input.Action == "agents" || input.Action == "share_agents" {
 		api.desktopShareMacCrewAgents(w, r, claims, roots.ID, binding, connection, input.Action, input.Agents)
 		return

@@ -106,8 +106,8 @@ func personMacTabs(ctx context.Context, person, project string) []crewMacTeamTab
 	return out
 }
 
-// ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose: with the Team off the
-// owner still chooses each one's Public on AgentBridge from the same list.
+// ownerMacTabsAll is every agent on the Crew owner's Mac, Main first, whatever the Team chose (the owner's
+// own list while the Team is off).
 func ownerMacTabsAll(ctx context.Context, project string) []crewMacTeamTab {
 	tabs, _ := readPersonMacTabs(ctx, ownerOfCrewProjectID(project), project, true)
 	if !slices.ContainsFunc(tabs, func(t crewMacTeamTab) bool { return t.Tab == macMainTab }) {

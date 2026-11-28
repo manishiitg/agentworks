@@ -141,7 +141,7 @@ func (api *StreamingAPI) externalAuthorizeMessagePeer(ctx context.Context, claim
 			return denied
 		}
 		tab := macSharedAgentTab(peer.ID, peer.ChatKey)
-		_, reason := macSharedAgentForAgent(peer.ID, tab, claims.UserID, peer.UserID)
+		_, reason := macSharedAgentFor(peer.ID, tab, claims.UserID, peer.UserID)
 
 		if reason == "" && token != nil {
 			if token.BoundAgentID != "" {

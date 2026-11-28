@@ -102,9 +102,6 @@ func (out *crewTeamTabReply) changeOnMac() {
 		agent := &out.Agents[i]
 		agent.CanChange, agent.CanEditRule, agent.CanSetPurpose = false, false, false
 		agent.Fixed, agent.PermissionsPrompt = crewChangeOnMacLine, ""
-		if agent.AgentBridge != nil {
-			agent.AgentBridge.CanChange, agent.AgentBridge.NeedsPurpose = false, false
-		}
 	}
 }
 
