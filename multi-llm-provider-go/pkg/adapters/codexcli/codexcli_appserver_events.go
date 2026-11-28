@@ -267,6 +267,17 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 			if event.ThreadID != thread {
 				continue
 			}
+			if msg.Method == "guardianWarning" {
+				var warning struct {
+					Message string `json:"message"`
+				}
+				if json.Unmarshal(msg.Params, &warning) == nil {
+					for _, chunk := range codexGuardianRow(warning.Message, map[string]any{"codex_thread_id": thread, "codex_turn_id": turn}) {
+						emit(chunk)
+					}
+				}
+				continue
+			}
 			if msg.Method == "hook/completed" {
 				if event.TurnID == "" || event.TurnID == turn {
 					for _, chunk := range codexHookRow(msg.Params, map[string]any{"codex_thread_id": thread, "codex_turn_id": turn}) {

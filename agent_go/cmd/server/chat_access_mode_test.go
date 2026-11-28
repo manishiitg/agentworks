@@ -19,7 +19,8 @@ func TestChatModeEffectiveNeverAddsReach(t *testing.T) {
 		{chatAccessAutoReview, "claude-code", true, chatAccessAutoReview},
 		{chatAccessAutoReview, "cursor-cli", true, chatAccessAutoReview},
 		{chatAccessAutoReview, "agy-cli", true, chatAccessAutoReview},
-		{chatAccessAutoReview, "codex-cli", true, chatAccessProject},
+		{chatAccessAutoReview, "codex-cli", true, chatAccessAutoReview},
+		{chatAccessAutoReview, "pi-cli", true, chatAccessProject},
 		{chatAccessAutoReview, "claude-code", false, chatAccessProject},
 		{chatAccessProject, "claude-code", true, chatAccessProject},
 	} {
@@ -58,9 +59,9 @@ func TestChatModeToolCanTurnAutoReviewOnButNeverOff(t *testing.T) {
 }
 
 func TestChatModeViewOffersAutoAndAutoReviewOnly(t *testing.T) {
-	view := chatAccessViewFor(chatAccessAutoReview, "codex-cli", true)
+	view := chatAccessViewFor(chatAccessAutoReview, "pi-cli", true)
 	if view.Mode != chatAccessAutoReview || view.Effective != "project" || len(view.Options) != 2 || view.Options[1].Available || view.Options[1].Why == "" {
-		t.Fatalf("codex view = %+v", view)
+		t.Fatalf("pi view = %+v", view)
 	}
 	view = chatAccessViewFor(chatAccessLegacyFull, "claude-code", true)
 	if view.Mode != "project" || view.Effective != "project" || !view.Options[1].Available {
