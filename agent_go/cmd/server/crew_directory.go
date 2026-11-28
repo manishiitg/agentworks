@@ -283,14 +283,21 @@ func listSharedProjectsForOwner(ctx context.Context, claims *UserClaims, profile
 // on it); the admin Code listing passes false, since Code is never shared and
 // a reviewer must see every Code (PLAT-725 filtered them all out).
 func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string, sharedOnly bool) []sharedProjectSummary {
+	rows := []sharedProjectSummary{}
+	forEachProjectOfOwner(ctx, claims, profile, ownerID, sharedOnly, readCrewProjectManifests, func(root string, manifest productProjectManifest) {
+		rows = append(rows, summarizeSharedProject(ctx, claims, ownerID, root, manifest))
+	})
+	return rows
+}
+
+// forEachProjectOfOwner calls use once per project of ownerID that this caller may see. A caller that needs only
+// IDs and names passes readCrewProjectMetadata, which skips each project's settings, functions and schedules.
+func forEachProjectOfOwner(ctx context.Context, claims *UserClaims, profile agentprofiles.Profile, ownerID string, sharedOnly bool,
+	read func(context.Context, string, string) (productProjectManifest, error), use func(string, productProjectManifest)) {
 	paths, _, err := listProjectManifestPaths(ctx, defaultProductProjectStore(), ownerID, profile)
 	if err != nil {
-		return nil
+		return
 	}
-	if len(paths) == 0 {
-		return nil
-	}
-	rows := []sharedProjectSummary{}
 	seenManifests := make(map[string]bool)
 	seenProjects := make(map[string]bool)
 	for _, candidate := range paths {
@@ -308,7 +315,7 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 			continue
 		}
 
-		manifest, err := readCrewProjectManifests(ctx, profile.ID, projectRoot)
+		manifest, err := read(ctx, profile.ID, projectRoot)
 		if err != nil {
 			log.Printf("[CREW_LIST] stage=directory root=%q cause=%v", projectRoot, err)
 			continue
@@ -317,9 +324,8 @@ func listProjectsForOwner(ctx context.Context, claims *UserClaims, profile agent
 			continue
 		}
 		seenProjects[manifest.ID] = true
-		rows = append(rows, summarizeSharedProject(ctx, claims, ownerID, projectRoot, manifest))
+		use(projectRoot, manifest)
 	}
-	return rows
 }
 
 // readCrewProjectMetadata reads identity and the Main pointer without loading runtime actions.
