@@ -27,8 +27,30 @@ const (
 )
 
 type chatUsageProbeResult struct {
-	limits  []chatUsageLimit
+	limits []chatUsageLimit
+	// note says why the account reports no plan use, when that is known (museAPIKeyPlanNote).
+	note    string
 	expires time.Time
+}
+
+// museAPIKeyPlanNote: `muse usage` reports no allowance for an account that runs on an API key, and the key
+// always wins over a Muse login, so its plan block says so instead of "not reported yet".
+const museAPIKeyPlanNote = "Muse shows no plan use for an account that uses an API key. Remove the key and sign this account in with Muse to see its 5-hour and weekly use."
+
+// chatUsageProbeNote is the reason the provider gave no plan windows for this account environment, or "".
+func chatUsageProbeNote(provider string, environment []string) string {
+	if provider == "muse-cli" && envValue(environment, "META_API_KEY") != "" {
+		return museAPIKeyPlanNote
+	}
+	return ""
+}
+
+// probedChatLimitsNote is the note from this account's last plan probe ("" when none or not probed yet).
+func probedChatLimitsNote(provider, connectionID string) string {
+	key := chatProbeProvider(provider) + "|" + strings.TrimSpace(connectionID)
+	chatUsageProbes.mu.Lock()
+	defer chatUsageProbes.mu.Unlock()
+	return chatUsageProbes.results[key].note
 }
 
 var chatUsageProbes = struct {
@@ -95,7 +117,8 @@ func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connection
 		delete(chatUsageProbes.running, key)
 		chatUsageProbes.mu.Unlock()
 	}()
-	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, environment()))
+	env := environment()
+	usage, err := readNativeAccountUsage(ctx, provider, nativeUsageEnvironment(provider, env))
 	// Keep the complete selected-account snapshot for Limits. The chat chip
 	// below remains a deliberately reduced projection. Failed probes never erase
 	// known native windows, and a newer live event wins over this request's start.
@@ -122,7 +145,11 @@ func refreshChatUsageProbe(ctx context.Context, key, owner, provider, connection
 	if err != nil {
 		limits = chatUsageProbes.results[key].limits
 	}
-	chatUsageProbes.results[key] = chatUsageProbeResult{limits: limits, expires: time.Now().Add(ttl)}
+	note := ""
+	if len(limits) == 0 {
+		note = chatUsageProbeNote(provider, env)
+	}
+	chatUsageProbes.results[key] = chatUsageProbeResult{limits: limits, note: note, expires: time.Now().Add(ttl)}
 	delete(chatUsageProbes.running, key)
 	chatUsageProbes.mu.Unlock()
 	// Provider errors can carry account details; log only the outcome.

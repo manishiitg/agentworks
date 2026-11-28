@@ -77,6 +77,8 @@ type chatContextView struct {
 	// Limits are the plan windows of this chat's own account: as its session reported them, else as its
 	// provider answered a direct quota request for that account (chat_usage_probe.go); empty when unknown.
 	Limits []chatUsageLimit `json:"limits,omitempty"`
+	// LimitsNote says why Limits is empty when the account's provider gave a reason (chatUsageProbeNote).
+	LimitsNote string `json:"limits_note,omitempty"`
 	// A switch is present only when this chat's model and provider offer it.
 	IdleCompaction *chatContextSwitch `json:"idle_compaction,omitempty"`
 	// ClaudeTerminal: on runs Claude Code as the native terminal, off as the chat view. Claude chats only.
@@ -453,6 +455,9 @@ func (api *StreamingAPI) chatContextViewFor(ctx context.Context, owner string, t
 	subject, transport := api.chatUsageSubjectForTab(owner, tab)
 	view := chatContextView{SessionID: sessionID}
 	view.UsedTokens, view.WindowTokens, view.Limits = api.chatUsage(sessionID, subject, true)
+	if len(view.Limits) == 0 {
+		view.LimitsNote = probedChatLimitsNote(subject.provider, subject.connection)
+	}
 	view.TotalOnly = isCodingAgentProvider(subject.provider, subject.model)
 	var breakdown nativeBreakdown
 	transcript := false

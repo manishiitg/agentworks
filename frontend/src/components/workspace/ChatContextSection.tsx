@@ -262,7 +262,7 @@ function PlanBlock({ view, projectId }: { view: ChatContextView; projectId: stri
         <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted"><div className={`h-1 rounded-full ${value >= 90 ? 'bg-diff-del' : value >= 75 ? 'bg-amber-500' : 'bg-muted-foreground/60'}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} /></div>
       </div>
     })}
-    {!limits.length && <p className="text-[11px] text-muted-foreground">This account has not reported its plan use yet.</p>}
+    {!limits.length && <p className="text-[11px] text-muted-foreground">{view.limits_note || 'This account has not reported its plan use yet.'}</p>}
     <div className="mt-1 flex flex-wrap gap-x-3">
       <button type="button" className={link} onClick={openSubscriptionLimits}>All accounts and usage</button>
       {projectId && <button type="button" className={link} onClick={() => window.dispatchEvent(new CustomEvent('agentworks:open-chat-usage', { detail: { projectId } }))}>Usage history</button>}
