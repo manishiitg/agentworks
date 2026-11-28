@@ -35,7 +35,8 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ArrowLeftRight, ChevronRight, Cloud, Pin, Search } from 'lucide-react'
+import { ArrowLeftRight, ChevronRight, Cloud, FolderPlus, Pin, Search } from 'lucide-react'
+import { SidebarSectionBlock, hasDraggedProject, readDraggedProjectKey } from './SidebarSectionBlock'
 import { agentTeamShareFromRow } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
 import { runtimeNeedsUserInput } from '../../utils/runtimeActivity'
@@ -55,9 +56,29 @@ function useWorkHistory() {
   const historyScope = connectedWorkHistoryScope()
   const pinned = useProjectMenuHistoryStore(state => state.pinned[historyScope])
   const recent = useProjectMenuHistoryStore(state => state.recent[historyScope])
+  const sections = useProjectMenuHistoryStore(state => state.sections[historyScope])
   const setPinned = useProjectMenuHistoryStore(state => state.setPinned)
   const movePinned = useProjectMenuHistoryStore(state => state.movePinned)
-  return { pinned, recent, movePinned: (key: string, target: string) => movePinned(historyScope, key, target), canPin: Boolean(historyScope), setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value) }
+  const createSection = useProjectMenuHistoryStore(state => state.createSection)
+  const renameSection = useProjectMenuHistoryStore(state => state.renameSection)
+  const deleteSection = useProjectMenuHistoryStore(state => state.deleteSection)
+  const toggleSectionCollapsed = useProjectMenuHistoryStore(state => state.toggleSectionCollapsed)
+  const moveSection = useProjectMenuHistoryStore(state => state.moveSection)
+  const assignProjectToSection = useProjectMenuHistoryStore(state => state.assignProjectToSection)
+  return {
+    pinned,
+    recent,
+    sections,
+    canPin: Boolean(historyScope),
+    movePinned: (key: string, target: string) => movePinned(historyScope, key, target),
+    setPinned: (key: string, value: boolean) => setPinned(historyScope, key, value),
+    createSection: (name: string) => createSection(historyScope, name),
+    renameSection: (sectionId: string, name: string) => renameSection(historyScope, sectionId, name),
+    deleteSection: (sectionId: string) => deleteSection(historyScope, sectionId),
+    toggleSectionCollapsed: (sectionId: string) => toggleSectionCollapsed(historyScope, sectionId),
+    moveSection: (sectionId: string, offset: -1 | 1) => moveSection(historyScope, sectionId, offset),
+    assignProjectToSection: (key: string, sectionId: string | null) => assignProjectToSection(historyScope, key, sectionId),
+  }
 }
 type ProjectMenuProps = {
   children?: ReactNode
@@ -93,7 +114,11 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const inventory = current ? state.inventory : {}
   const directoryError = desktop && current ? state.error : ''
   const historyScope = connectedWorkHistoryScope()
-  const { pinned, recent, canPin, setPinned, movePinned } = useWorkHistory()
+  const { pinned, recent, sections, canPin, setPinned, movePinned, createSection, renameSection, deleteSection, toggleSectionCollapsed, moveSection, assignProjectToSection } = useWorkHistory()
+  const [creatingSection, setCreatingSection] = useState<{ assignKey?: string } | null>(null)
+  const [newSectionName, setNewSectionName] = useState('')
+  const [pinnedDragOver, setPinnedDragOver] = useState(false)
+  const [recentDragOver, setRecentDragOver] = useState(false)
   const [sidebarMode, setSidebarMode] = useState<SidebarViewMode>(() => readSidebarViewMode(historyScope))
   const selectSidebarMode = (next: SidebarViewMode) => {
     setSidebarMode(next)
@@ -148,7 +173,22 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const isOpenProject = (project: typeof rows[number]) => project.connection.id === active
     ? Boolean(project.selected) && remoteProjectConnection(selectedWorkProjectId) === undefined
     : project.kind === 'crew' && project.id === selectedWorkProjectId && remoteProjectConnection(project.id) === project.connection.id
-  const { pinnedRows, recentRows, openRow } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject)
+  const sectionList = sections ?? []
+  const sectionedKeys = new Set(sectionList.flatMap(sec => sec.items))
+  const sectionByProjectKey = new Map<string, string>()
+  for (const sec of sectionList) {
+    for (const itemKey of sec.items) sectionByProjectKey.set(itemKey, sec.id)
+  }
+  const sectionMenuOptions = sectionList.map(sec => ({ id: sec.id, name: sec.name }))
+  const rowsByKey = new Map(rows.map(row => [keyFor(row), row]))
+  const resolvedSections = sectionList.map(sec => ({
+    ...sec,
+    projects: sec.items.flatMap(itemKey => {
+      const row = rowsByKey.get(itemKey)
+      return row ? [row] : []
+    }),
+  }))
+  const { pinnedRows, recentRows } = sidebarProjectShortcuts(rows, keyFor, pinned ?? [], recent ?? [], isOpenProject, sectionedKeys)
   const pinnedKeys = new Set(pinned ?? [])
   const renderProject = (project: typeof rows[number], pinnedShortcut: boolean) => {
     const { location: where, mac, state: crewState, connection, ...rest } = project
@@ -178,6 +218,11 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       selected={isOpenProject(project)}
       location={desktop && connection.id !== 'local' ? connection.name : undefined} remote={desktop && connection.id !== 'local'} showLocation={desktop} serverLine={desktop && connection.id !== 'local' ? serverLineFor(project, connection) : undefined}
       pinned={pinnedKeys.has(key)} onTogglePin={canPin && crew ? () => setPinned(key, !pinnedKeys.has(key)) : undefined}
+      sections={canPin && crew ? sectionMenuOptions : undefined}
+      currentSectionId={sectionByProjectKey.get(key) ?? null}
+      onMoveToSection={canPin && crew ? sectionId => assignProjectToSection(key, sectionId) : undefined}
+      onCreateSectionForProject={canPin && crew ? () => { setCreatingSection({ assignKey: key }); setNewSectionName('') } : undefined}
+      draggableProjectKey={canPin && crew ? key : undefined}
       onNewAgent={(currentCrew ? canAddAgent : openForAction) ? fromCrew('new') : undefined}
       onImportLocalChat={(currentCrew ? canImportChat : openForAction && localMode && project.owned_by_caller !== false) ? fromCrew('chat') : undefined}
       onDiscoverSkills={(currentCrew ? canDiscoverSkills : openForAction) ? fromCrew('skills') : undefined}
@@ -194,20 +239,26 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   }
   if (!directory) {
     const projectIds = new Set(rows.map(project => project.id))
-    const activeProjectIds = new Set<string>()
+    const runningProjectIds = new Set<string>()
+    const waitingProjectIds = new Set<string>()
     for (const session of activeSessions) {
       if (!session.crew_project_id || !projectIds.has(session.crew_project_id)) continue
-      if (runtimeNeedsUserInput(session) || hasActiveSessionWork(session)) {
-        activeProjectIds.add(session.crew_project_id)
-      }
+      if (hasActiveSessionWork(session)) runningProjectIds.add(session.crew_project_id)
+      else if (runtimeNeedsUserInput(session)) waitingProjectIds.add(session.crew_project_id)
     }
+    const sectionedRows = resolvedSections.flatMap(sec => sec.projects)
     const threadProjects = [
       ...pinnedRows,
+      ...sectionedRows,
       ...recentRows,
-      ...rows.filter(project => activeProjectIds.has(project.id)),
-      ...(pinnedRows.length === 0 && recentRows.length === 0 ? rows.slice(0, 8) : []),
+      ...rows.filter(project => runningProjectIds.has(project.id) || waitingProjectIds.has(project.id)),
+      ...(pinnedRows.length === 0 && sectionedRows.length === 0 && recentRows.length === 0 ? rows.slice(0, 8) : []),
     ].filter((project, index, all) => all.findIndex(other => other.id === project.id) === index).slice(0, 12)
     const switchButtonClass = 'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
+    const newSectionButton = canPin && rows.length > 0 && <button type="button" onClick={() => { setCreatingSection({}); setNewSectionName('') }} aria-label="New section" title="Create a collapsible section" className={switchButtonClass}>
+      <FolderPlus className="h-3 w-3 shrink-0" aria-hidden="true" />
+      <span>Section</span>
+    </button>
     const switchToThreads = rows.length > 0 && <button type="button" onClick={() => selectSidebarMode('threads')} aria-label="Switch to Threads view" className={switchButtonClass}>
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Threads</span>
@@ -216,27 +267,112 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       <ArrowLeftRight className="h-3 w-3 shrink-0" aria-hidden="true" />
       <span>Projects</span>
     </button>
+    const headerControls = (newSectionButton || switchToThreads) && <div className="flex items-center gap-0.5">{newSectionButton}{switchToThreads}</div>
+    const commitNewSection = () => {
+      const id = createSection(newSectionName)
+      if (id && creatingSection?.assignKey) assignProjectToSection(creatingSection.assignKey, id)
+      setCreatingSection(null)
+      setNewSectionName('')
+    }
+    const sectionActivity = (projectsInSection: typeof rows): 'running' | 'waiting' | undefined => {
+      if (projectsInSection.some(project => runningProjectIds.has(project.id))) return 'running'
+      if (projectsInSection.some(project => waitingProjectIds.has(project.id))) return 'waiting'
+      return undefined
+    }
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
         {sidebarMode === 'threads' ? (
           <SidebarThreadsView projects={threadProjects} scope={historyScope} switchControl={switchToProjects} />
         ) : <>
-          {pinnedRows.length > 0 && <section aria-label="Pinned projects" className="mb-3 shrink-0 space-y-1">
+          {pinnedRows.length > 0 && <section
+            aria-label="Pinned projects"
+            onDragOver={event => {
+              if (!hasDraggedProject(event)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              if (!pinnedDragOver) setPinnedDragOver(true)
+            }}
+            onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setPinnedDragOver(false) }}
+            onDrop={event => {
+              const dropped = readDraggedProjectKey(event)
+              setPinnedDragOver(false)
+              if (!dropped) return
+              event.preventDefault()
+              setPinned(dropped, true)
+            }}
+            className={`mb-2.5 shrink-0 space-y-1 rounded-lg border transition-colors ${pinnedDragOver ? 'border-primary/60 bg-primary/10' : 'border-transparent'}`}
+          >
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
               <h2 className="text-xs font-medium text-muted-foreground">Pinned</h2>
-              {switchToThreads}
+              {headerControls}
             </div>
             {pinnedRows.map(project => renderProject(project, true))}
           </section>}
-          {recentRows.length > 0 && <section aria-labelledby="recent-projects-heading" className="mb-3 shrink-0 space-y-1">
+
+          {pinnedRows.length === 0 && (resolvedSections.length > 0 || creatingSection) && headerControls && <div className="flex justify-end px-2 pb-1 pt-2">{headerControls}</div>}
+
+          {creatingSection && <form className="mb-2 flex items-center gap-1 px-1" onSubmit={event => { event.preventDefault(); commitNewSection() }}>
+            <input
+              type="text"
+              aria-label="New section name"
+              autoFocus
+              placeholder="Section name (e.g. Clients)"
+              value={newSectionName}
+              onChange={event => setNewSectionName(event.target.value)}
+              onKeyDown={event => { if (event.key === 'Escape') { event.preventDefault(); setCreatingSection(null); setNewSectionName('') } }}
+              className="h-7 min-w-0 flex-1 rounded-md border border-primary/50 bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button type="submit" disabled={!newSectionName.trim()} className="h-7 shrink-0 rounded-md bg-foreground px-2.5 text-xs font-medium text-background disabled:opacity-40">Add</button>
+          </form>}
+
+          {resolvedSections.map((section, index) => (
+            <SidebarSectionBlock
+              key={section.id}
+              id={section.id}
+              name={section.name}
+              count={section.projects.length}
+              collapsed={Boolean(section.collapsed)}
+              activityState={sectionActivity(section.projects)}
+              canMoveUp={index > 0}
+              canMoveDown={index < resolvedSections.length - 1}
+              onToggle={() => toggleSectionCollapsed(section.id)}
+              onRename={nextName => renameSection(section.id, nextName)}
+              onMoveUp={() => moveSection(section.id, -1)}
+              onMoveDown={() => moveSection(section.id, 1)}
+              onDelete={() => deleteSection(section.id)}
+              onDropProject={droppedKey => assignProjectToSection(droppedKey, section.id)}
+            >
+              {section.projects.map(project => renderProject(project, false))}
+            </SidebarSectionBlock>
+          ))}
+
+          {recentRows.length > 0 && <section
+            aria-labelledby="recent-projects-heading"
+            onDragOver={event => {
+              if (!hasDraggedProject(event)) return
+              event.preventDefault()
+              event.dataTransfer.dropEffect = 'move'
+              if (!recentDragOver) setRecentDragOver(true)
+            }}
+            onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setRecentDragOver(false) }}
+            onDrop={event => {
+              const dropped = readDraggedProjectKey(event)
+              setRecentDragOver(false)
+              if (!dropped) return
+              event.preventDefault()
+              assignProjectToSection(dropped, null)
+              setPinned(dropped, false)
+            }}
+            className={`mb-3 shrink-0 space-y-1 rounded-lg border transition-colors ${recentDragOver ? 'border-primary/60 bg-primary/10' : 'border-transparent'}`}
+          >
             <div className="flex items-center justify-between px-2 pb-1 pt-2">
               <h2 id="recent-projects-heading" className="text-xs font-medium text-muted-foreground">Recent</h2>
-              {pinnedRows.length === 0 && switchToThreads}
+              {pinnedRows.length === 0 && resolvedSections.length === 0 && !creatingSection && headerControls}
             </div>
             {recentRows.map(project => renderProject(project, false))}
           </section>}
-          {pinnedRows.length === 0 && recentRows.length === 0 && switchToThreads && <div className="flex justify-end px-2 pt-2">{switchToThreads}</div>}
+          {pinnedRows.length === 0 && resolvedSections.length === 0 && !creatingSection && recentRows.length === 0 && headerControls && <div className="flex justify-end px-2 pt-2">{headerControls}</div>}
         </>}
       </div>
     </div>

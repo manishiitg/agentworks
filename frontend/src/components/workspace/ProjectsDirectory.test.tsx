@@ -155,7 +155,7 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
   } finally {
     await act(async () => root.unmount())
     host.remove()
-    useProjectMenuHistoryStore.setState({ recent: {}, pinned: {}, startHere: {} })
+    useProjectMenuHistoryStore.setState({ recent: {}, pinned: {}, startHere: {}, sections: {} })
     window.history.replaceState({}, '', '/')
     if (previous !== null) localStorage.setItem('auth-storage', previous)
     else localStorage.removeItem('auth-storage')

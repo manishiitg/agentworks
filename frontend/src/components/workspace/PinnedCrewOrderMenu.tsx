@@ -1,9 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, BookOpen, Import, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, BookOpen, Check, Folder, FolderPlus, Import, MoreHorizontal, Plus, Pin, PinOff, Trash2 } from 'lucide-react'
+
+export interface SectionMenuOption {
+  id: string
+  name: string
+}
 
 /** Reorders personal navigation shortcuts, never the Crew or its agents. */
-export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMoveDown, onNewAgent, onImportLocalChat, onDiscoverSkills, onRemoveOnlineCopy }: { name: string; pinned?: boolean; onTogglePin?: () => void; onMoveUp?: () => void; onMoveDown?: () => void; onNewAgent?: () => void; onImportLocalChat?: () => void; onDiscoverSkills?: () => void; onRemoveOnlineCopy?: () => void }) {
+export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMoveDown, onNewAgent, onImportLocalChat, onDiscoverSkills, onRemoveOnlineCopy, sections, currentSectionId, onMoveToSection, onCreateSectionForProject }: { name: string; pinned?: boolean; onTogglePin?: () => void; onMoveUp?: () => void; onMoveDown?: () => void; onNewAgent?: () => void; onImportLocalChat?: () => void; onDiscoverSkills?: () => void; onRemoveOnlineCopy?: () => void; sections?: readonly SectionMenuOption[]; currentSectionId?: string | null; onMoveToSection?: (sectionId: string | null) => void; onCreateSectionForProject?: () => void }) {
   const trigger = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null)
@@ -42,6 +47,7 @@ export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMov
       window.removeEventListener('scroll', scroll, true)
     }
   }, [position])
+  const hasSectionActions = Boolean(onMoveToSection || onCreateSectionForProject)
   return <>
     <button ref={trigger} type="button" title="Project actions" aria-label={`Actions for ${name}`} aria-haspopup="dialog" aria-expanded={!!position}
       className="mr-1 flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover/crew:opacity-100 md:group-focus-within/crew:opacity-100"
@@ -57,6 +63,20 @@ export function PinnedCrewOrderMenu({ name, pinned, onTogglePin, onMoveUp, onMov
       {onImportLocalChat && <button type="button" onClick={() => { close(); onImportLocalChat() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Import aria-hidden="true" className="h-3.5 w-3.5" />Import local chat…</button>}
       {onDiscoverSkills && <button type="button" onClick={() => { close(); onDiscoverSkills() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><BookOpen aria-hidden="true" className="h-3.5 w-3.5" />Discover &amp; import skills…</button>}
       {onTogglePin && <button type="button" onClick={() => { onTogglePin(); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">{pinned ? <PinOff aria-hidden="true" className="h-3.5 w-3.5" /> : <Pin aria-hidden="true" className="h-3.5 w-3.5" />}{pinned ? 'Unpin project' : 'Pin project'}</button>}
+      {hasSectionActions && <>
+        <div className="my-1 border-t border-border" />
+        <p className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Move to section</p>
+        {onMoveToSection && (sections || []).map(section => {
+          const active = currentSectionId === section.id
+          return <button key={section.id} type="button" onClick={() => { onMoveToSection(section.id); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring">
+            <Folder aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate">{section.name}</span>
+            {active && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0" />}
+          </button>
+        })}
+        {onMoveToSection && currentSectionId && <button type="button" onClick={() => { onMoveToSection(null); close() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring">Remove from section</button>}
+        {onCreateSectionForProject && <button type="button" onClick={() => { close(); onCreateSectionForProject() }} className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><FolderPlus aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />New section…</button>}
+      </>}
       {onRemoveOnlineCopy && !confirmRemove && <button type="button" onClick={() => setConfirmRemove(true)} className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove online copy</button>}
       {onRemoveOnlineCopy && confirmRemove && <div className="px-2 py-1">
         <p className="px-1 pb-1.5 text-xs text-muted-foreground">Remove this online copy? Your Mac project stays on your Mac.</p>
