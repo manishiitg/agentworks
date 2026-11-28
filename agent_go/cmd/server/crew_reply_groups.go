@@ -335,6 +335,7 @@ var replyPRCache = struct {
 	sync.Mutex
 	entries    map[[32]byte]replyPRCacheEntry
 	refreshing map[[32]byte]bool
+	group      singleflight.Group
 }{
 	entries:    make(map[[32]byte]replyPRCacheEntry),
 	refreshing: make(map[[32]byte]bool),
@@ -409,8 +410,19 @@ func cachedGitHubPullRequestStatus(ctx context.Context, token, repo, branch stri
 		return entry.pr
 	}
 	replyPRCache.Unlock()
-	pr := githubPullRequestStatusWithBase(ctx, baseURL, token, repo, branch)
-	storeReplyPRCache(key, pr, time.Now())
+	sfKey := hex.EncodeToString(key[:])
+	value, _, _ := replyPRCache.group.Do(sfKey, func() (any, error) {
+		replyPRCache.Lock()
+		if cached, ok := replyPRCache.entries[key]; ok && time.Now().Before(cached.expires) {
+			replyPRCache.Unlock()
+			return cached.pr, nil
+		}
+		replyPRCache.Unlock()
+		pr := githubPullRequestStatusWithBase(ctx, baseURL, token, repo, branch)
+		storeReplyPRCache(key, pr, time.Now())
+		return pr, nil
+	})
+	pr, _ := value.(*filesnapshots.PullRequest)
 	return pr
 }
 
