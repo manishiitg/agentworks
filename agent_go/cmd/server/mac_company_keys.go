@@ -48,7 +48,10 @@ type macCompanyKeysCached struct {
 
 var macCompanyKeysCache sync.Map // owner|connection -> macCompanyKeysCached
 
-const macCompanyKeysFresh = time.Minute
+const (
+	macCompanyKeysFresh    = time.Minute
+	macCompanyKeysStaleMax = 10 * time.Minute
+)
 
 // addServerCompanyKeys adds, on a Mac, the company keys from the project owner's company server to a turn's keys. A
 // name the turn already has keeps its value.
@@ -67,25 +70,39 @@ func (api *StreamingAPI) addServerCompanyKeys(ctx context.Context, userID, folde
 	}
 	key := owner + "|" + conn.ID
 	var keys []resolvedSecret
-	if cached, ok := macCompanyKeysCache.Load(key); ok && time.Since(cached.(macCompanyKeysCached).at) < macCompanyKeysFresh {
-		keys = cached.(macCompanyKeysCached).keys
-	} else {
-		round, cancel := context.WithTimeout(ctx, 10*time.Second)
+	var staleEntry macCompanyKeysCached
+	hasStale := false
+	if cached, ok := macCompanyKeysCache.Load(key); ok {
+		entry := cached.(macCompanyKeysCached)
+		if time.Since(entry.at) < macCompanyKeysFresh {
+			keys = entry.keys
+		} else if time.Since(entry.at) < macCompanyKeysStaleMax {
+			staleEntry = entry
+			hasStale = true
+		}
+	}
+	if keys == nil {
+		round, cancel := context.WithTimeout(ctx, serverVaultRequestTimeout)
 		started := time.Now()
 		body, result := serverVaultGet(round, owner, conn, "/api/vault/me/company-keys")
 		cancel()
 		logServerVault(owner, conn, "company_keys", "-", result, started)
 		if result != "ok" {
-			return have
+			if result == "unreachable" && hasStale {
+				keys = staleEntry.keys
+			} else {
+				return have
+			}
+		} else {
+			var out struct {
+				Keys []resolvedSecret `json:"keys"`
+			}
+			if json.Unmarshal(body, &out) != nil {
+				return have
+			}
+			keys = out.Keys
+			macCompanyKeysCache.Store(key, macCompanyKeysCached{at: time.Now(), keys: keys})
 		}
-		var out struct {
-			Keys []resolvedSecret `json:"keys"`
-		}
-		if json.Unmarshal(body, &out) != nil {
-			return have
-		}
-		keys = out.Keys
-		macCompanyKeysCache.Store(key, macCompanyKeysCached{at: time.Now(), keys: keys})
 	}
 	got := map[string]bool{}
 	for _, s := range have {

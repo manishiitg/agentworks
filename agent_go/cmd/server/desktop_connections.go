@@ -448,8 +448,9 @@ func (api *StreamingAPI) handleDesktopSignInStatus(w http.ResponseWriter, r *htt
 
 var (
 	desktopProxyDialTimeout           = 5 * time.Second
-	desktopProxyResponseHeaderTimeout = 12 * time.Second
-	desktopProxyCooldown              = 10 * time.Second
+	desktopProxyResponseHeaderTimeout = 6 * time.Second
+	desktopProxyCooldown              = 15 * time.Second
+	desktopProxyMaxCooldown           = 60 * time.Second
 
 	desktopProxyTransportMu sync.Mutex
 	desktopProxyTransport   *http.Transport
@@ -457,6 +458,8 @@ var (
 
 	desktopProxyCooldownMu sync.Mutex
 	desktopProxyUnreach    = map[string]time.Time{}
+	desktopProxyFailures   = map[string]int{}
+	desktopProxyProbing    = map[string]bool{}
 )
 
 func desktopProxyTransports() (normal, stream *http.Transport) {
@@ -497,6 +500,9 @@ func isDesktopProxyStreamingRequest(r *http.Request, path string, streamUpgrade 
 }
 
 func desktopProxyInCooldown(connID string) bool {
+	if desktopProxyCooldown <= 0 || connID == "" {
+		return false
+	}
 	desktopProxyCooldownMu.Lock()
 	defer desktopProxyCooldownMu.Unlock()
 	until, ok := desktopProxyUnreach[connID]
@@ -510,18 +516,65 @@ func desktopProxyInCooldown(connID string) bool {
 	return true
 }
 
+// desktopProxyTryAcquire enforces per-connection unreachable cooldown and
+// half-open single-probe gating: after cooldown expires on a previously
+// unreachable connection, only one caller probes at a time while concurrent
+// callers fail fast instead of stampeding into full timeouts (#4515).
+func desktopProxyTryAcquire(connID string) (bool, func()) {
+	if desktopProxyCooldown <= 0 || connID == "" {
+		return true, nil
+	}
+	desktopProxyCooldownMu.Lock()
+	defer desktopProxyCooldownMu.Unlock()
+	if until, ok := desktopProxyUnreach[connID]; ok {
+		if time.Now().Before(until) {
+			return false, nil
+		}
+		delete(desktopProxyUnreach, connID)
+	}
+	if desktopProxyFailures[connID] > 0 {
+		if desktopProxyProbing[connID] {
+			return false, nil
+		}
+		desktopProxyProbing[connID] = true
+		return true, func() {
+			desktopProxyCooldownMu.Lock()
+			delete(desktopProxyProbing, connID)
+			desktopProxyCooldownMu.Unlock()
+		}
+	}
+	return true, nil
+}
+
 func markDesktopProxyUnreachable(connID string) {
-	if desktopProxyCooldown <= 0 {
+	if desktopProxyCooldown <= 0 || connID == "" {
 		return
 	}
 	desktopProxyCooldownMu.Lock()
-	desktopProxyUnreach[connID] = time.Now().Add(desktopProxyCooldown)
+	failures := desktopProxyFailures[connID] + 1
+	desktopProxyFailures[connID] = failures
+	shift := failures - 1
+	if shift > 2 {
+		shift = 2
+	}
+	backoff := desktopProxyCooldown << shift
+	maxBackoff := desktopProxyMaxCooldown
+	if maxBackoff < desktopProxyCooldown {
+		maxBackoff = desktopProxyCooldown
+	}
+	if backoff > maxBackoff {
+		backoff = maxBackoff
+	}
+	desktopProxyUnreach[connID] = time.Now().Add(backoff)
+	delete(desktopProxyProbing, connID)
 	desktopProxyCooldownMu.Unlock()
 }
 
 func clearDesktopProxyUnreachable(connID string) {
 	desktopProxyCooldownMu.Lock()
 	delete(desktopProxyUnreach, connID)
+	delete(desktopProxyFailures, connID)
+	delete(desktopProxyProbing, connID)
 	desktopProxyCooldownMu.Unlock()
 }
 
@@ -554,9 +607,15 @@ func (api *StreamingAPI) handleDesktopConnectionProxy(w http.ResponseWriter, r *
 		return
 	}
 	isStream := isDesktopProxyStreamingRequest(r, path, streamUpgrade)
-	if !isStream && desktopProxyInCooldown(c.ID) {
-		http.Error(w, `{"error":"Cannot reach this server. Your other connections are still available."}`, 502)
-		return
+	if !isStream {
+		allowed, releaseProbe := desktopProxyTryAcquire(c.ID)
+		if !allowed {
+			http.Error(w, `{"error":"Cannot reach this server. Your other connections are still available."}`, 502)
+			return
+		}
+		if releaseProbe != nil {
+			defer releaseProbe()
+		}
 	}
 	normalTransport, streamTransport := desktopProxyTransports()
 	transport := normalTransport

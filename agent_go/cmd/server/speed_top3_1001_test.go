@@ -29,6 +29,8 @@ func TestDesktopConnectionProxyBoundsTimeoutAndCooldown(t *testing.T) {
 		desktopProxyTransportMu.Unlock()
 		desktopProxyCooldownMu.Lock()
 		desktopProxyUnreach = map[string]time.Time{}
+		desktopProxyFailures = map[string]int{}
+		desktopProxyProbing = map[string]bool{}
 		desktopProxyCooldownMu.Unlock()
 	})
 

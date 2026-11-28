@@ -65,9 +65,20 @@ func logServerVault(user string, c desktopConnection, kind, name, result string,
 	log.Printf("[VAULT_REMOTE] user=%s conn=%s %s=%s result=%s ms=%d", user, serverVaultConnShort(c.ID), kind, name, result, time.Since(started).Milliseconds())
 }
 
+var serverVaultRequestTimeout = 4 * time.Second
+
 // serverVaultGet is one GET to the server's /api/vault/me routes with the saved sign-in (renewed when the server says
 // so). result is ok, sign_in (the sign-in expired), unreachable or refused.
 func serverVaultGet(ctx context.Context, owner string, c desktopConnection, route string) ([]byte, string) {
+	if c.ID != "" {
+		allowed, releaseProbe := desktopProxyTryAcquire(c.ID)
+		if !allowed {
+			return nil, "unreachable"
+		}
+		if releaseProbe != nil {
+			defer releaseProbe()
+		}
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.Server, "/")+route, nil)
 	if err != nil {
 		return nil, "refused"
@@ -75,6 +86,9 @@ func serverVaultGet(ctx context.Context, owner string, c desktopConnection, rout
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	resp, err := crewTeamHTTPClient(ctx).Do(req)
 	if err != nil {
+		if ctx.Err() != context.Canceled {
+			markDesktopProxyUnreachable(c.ID)
+		}
 		return nil, "unreachable"
 	}
 	defer resp.Body.Close()
@@ -83,12 +97,16 @@ func serverVaultGet(ctx context.Context, owner string, c desktopConnection, rout
 	}
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized:
+		clearDesktopProxyUnreachable(c.ID)
 		return nil, "sign_in"
 	case resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusGatewayTimeout:
+		markDesktopProxyUnreachable(c.ID)
 		return nil, "unreachable"
 	case resp.StatusCode != http.StatusOK:
+		clearDesktopProxyUnreachable(c.ID)
 		return nil, "refused"
 	}
+	clearDesktopProxyUnreachable(c.ID)
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, "unreachable"
@@ -642,7 +660,7 @@ func (api *StreamingAPI) addServerVaultSelected(ctx context.Context, userID, fol
 	if !paired {
 		return have
 	}
-	round, cancel := context.WithTimeout(ctx, 10*time.Second)
+	round, cancel := context.WithTimeout(ctx, serverVaultRequestTimeout)
 	defer cancel()
 	answers, _ := ctx.Value(serverVaultSecretRoundKey{}).(*serverVaultSecretRound)
 	for _, name := range missing {
