@@ -852,13 +852,18 @@ func runServer(cmd *cobra.Command, args []string) {
 		if !terminalStore.HandleEventWithChange(sessionID, event) {
 			return
 		}
-		for _, snapshot := range terminalStore.ListRaw(sessionID) {
+		rawSnapshots := terminalStore.ListRaw(sessionID)
+		hasTmux := false
+		for _, snapshot := range rawSnapshots {
+			if strings.TrimSpace(snapshot.TmuxSession) != "" {
+				hasTmux = true
+			}
 			if lease, acquired := terminalLeaseRegistry.Observe(snapshot, event.Timestamp); acquired {
 				go markTerminalLeaseOwnership(lease)
 			}
 		}
-		if terminalPipeRecorder != nil {
-			terminalPipeRecorder.ObserveSnapshots(terminalStore.List(sessionID))
+		if hasTmux && terminalPipeRecorder != nil {
+			terminalPipeRecorder.ObserveSnapshots(terminalStore.ListMetadata(sessionID))
 		}
 	}
 	eventStore.SetEventAddedCallback(terminalEventObserver)

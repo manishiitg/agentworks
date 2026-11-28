@@ -105,16 +105,20 @@ type Context struct {
 
 // Store keeps current terminal screens outside durable event history.
 type Store struct {
-	mu             sync.RWMutex
-	byID           map[string]Snapshot
-	bySession      map[string]map[string]struct{}
-	dismissed      map[string]struct{}
-	forcedInactive map[string]time.Time
-	toolLines      map[string]*terminalToolLines
+	mu              sync.RWMutex
+	byID            map[string]Snapshot
+	bySession       map[string]map[string]struct{}
+	dismissed       map[string]struct{}
+	forcedInactive  map[string]time.Time
+	toolLines       map[string]*terminalToolLines
+	structuredBase  map[string]*strings.Builder
+	structuredDirty map[string]map[string]interface{}
 	// mainContext is the main chat's latest context fill, reported by its CLI's live status line. A structured
 	// (SDK) chat has no terminal to carry it, so it is kept per session here.
 	mainContext map[string]MainContextUsage
 }
+
+var emptyStructuredMeta = map[string]interface{}{}
 
 // MainContextUsage is the main chat's latest context fill and the provider that reported it.
 type MainContextUsage struct {
@@ -138,12 +142,14 @@ type terminalToolLine struct {
 
 func NewStore() *Store {
 	return &Store{
-		byID:           make(map[string]Snapshot),
-		bySession:      make(map[string]map[string]struct{}),
-		dismissed:      make(map[string]struct{}),
-		forcedInactive: make(map[string]time.Time),
-		toolLines:      make(map[string]*terminalToolLines),
-		mainContext:    make(map[string]MainContextUsage),
+		byID:            make(map[string]Snapshot),
+		bySession:       make(map[string]map[string]struct{}),
+		dismissed:       make(map[string]struct{}),
+		forcedInactive:  make(map[string]time.Time),
+		toolLines:       make(map[string]*terminalToolLines),
+		structuredBase:  make(map[string]*strings.Builder),
+		structuredDirty: make(map[string]map[string]interface{}),
+		mainContext:     make(map[string]MainContextUsage),
 	}
 }
 
@@ -316,6 +322,7 @@ func (s *Store) ListMetadata(sessionID string) []Snapshot {
 				continue
 			}
 			if snapshot, ok := s.byID[terminalID]; ok {
+				s.materializeStructuredLocked(terminalID, &snapshot)
 				out = append(out, snapshot)
 			}
 		}
@@ -325,6 +332,7 @@ func (s *Store) ListMetadata(sessionID string) []Snapshot {
 			if _, dismissed := s.dismissed[terminalID]; dismissed {
 				continue
 			}
+			s.materializeStructuredLocked(terminalID, &snapshot)
 			out = append(out, snapshot)
 		}
 	}
@@ -535,6 +543,7 @@ func (s *Store) RemoveSession(sessionID string) {
 		delete(s.forcedInactive, terminalID)
 		delete(s.dismissed, terminalID)
 		delete(s.toolLines, terminalID)
+		s.clearStructuredBufferLocked(terminalID)
 	}
 	delete(s.bySession, sessionID)
 }
@@ -889,6 +898,7 @@ func (s *Store) SetDisplayContent(terminalID, content, contentSource string) (Sn
 	contentChanged := snapshot.Content != content
 	sourceChanged := contentSource != "" && snapshot.ContentSource != contentSource
 	if contentChanged {
+		s.clearStructuredBufferLocked(terminalID)
 		snapshot.Content = content
 		snapshot.Rows = nil
 	}
@@ -916,6 +926,7 @@ func (s *Store) refreshContent(terminalID, content, contentSource string) (Snaps
 		return Snapshot{}, false
 	}
 	now := time.Now()
+	s.clearStructuredBufferLocked(terminalID)
 	lifecycleContent := content
 	contentChanged := snapshot.Content != content
 	snapshot.Content = content
@@ -1091,6 +1102,7 @@ func (s *Store) upsertTerminal(sessionID string, event storeevents.Event, metada
 		stringValue(metadata, "cursor_interactive_session"),
 		current.TmuxSession,
 	)
+	s.clearStructuredBufferLocked(terminalID)
 	content = s.contentWithToolLinesLocked(terminalID, content)
 	lifecycleContent := content
 	contentChanged := !exists || current.Content != content
@@ -1173,6 +1185,51 @@ func (s *Store) ensureStructuredExecution(sessionID string, event storeevents.Ev
 	s.bySession[sessionID][terminalID] = struct{}{}
 }
 
+func (s *Store) clearStructuredBufferLocked(terminalID string) {
+	delete(s.structuredBase, terminalID)
+	delete(s.structuredDirty, terminalID)
+}
+
+func (s *Store) ensureStructuredBaseLocked(terminalID string, snapshot Snapshot) *strings.Builder {
+	if buf := s.structuredBase[terminalID]; buf != nil {
+		return buf
+	}
+	buf := &strings.Builder{}
+	if trimmed := strings.TrimSpace(snapshot.Content); trimmed != "" && trimmed != "Starting…" {
+		buf.WriteString(stripTerminalToolLines(snapshot.Content))
+	}
+	s.structuredBase[terminalID] = buf
+	return buf
+}
+
+func (s *Store) markStructuredDirtyLocked(terminalID string, metadata map[string]interface{}) {
+	if metadata != nil {
+		s.structuredDirty[terminalID] = metadata
+		return
+	}
+	if _, already := s.structuredDirty[terminalID]; !already {
+		s.structuredDirty[terminalID] = emptyStructuredMeta
+	}
+}
+
+func (s *Store) materializeStructuredLocked(terminalID string, snapshot *Snapshot) bool {
+	meta, dirty := s.structuredDirty[terminalID]
+	if !dirty {
+		return false
+	}
+	base := ""
+	if buf := s.structuredBase[terminalID]; buf != nil {
+		base = buf.String()
+	}
+	snapshot.Content = s.renderToolLinesLocked(terminalID, base)
+	previousStatus := snapshot.Status
+	snapshot.Status = DeriveStatus(snapshot.Content, meta)
+	preserveEphemeralStatusFields(&snapshot.Status, previousStatus)
+	delete(s.structuredDirty, terminalID)
+	s.byID[terminalID] = *snapshot
+	return true
+}
+
 func (s *Store) upsertStructuredChunk(sessionID string, event storeevents.Event, metadata map[string]interface{}, content string, chunkIndex int) {
 	ownerID := terminalOwnerID(sessionID, event, metadata)
 	terminalID := terminalIDFor(sessionID, ownerID)
@@ -1199,18 +1256,15 @@ func (s *Store) upsertStructuredChunk(sessionID string, event storeevents.Event,
 		}
 	}
 	enrichStructuredExecutionSnapshot(&snapshot, sessionID, ownerID, event, metadata)
-	if strings.TrimSpace(snapshot.Content) == "Starting…" {
-		snapshot.Content = ""
-	}
+	buf := s.ensureStructuredBaseLocked(terminalID, snapshot)
 	if structuredChunkIsDelta(event) {
-		snapshot.Content += content
-	} else if strings.TrimSpace(content) != "" && !strings.HasSuffix(snapshot.Content, content) {
-		if snapshot.Content != "" && !strings.HasSuffix(snapshot.Content, "\n") {
-			snapshot.Content += "\n"
+		buf.WriteString(content)
+	} else if strings.TrimSpace(content) != "" && !strings.HasSuffix(buf.String(), content) {
+		if buf.Len() > 0 && !strings.HasSuffix(buf.String(), "\n") {
+			buf.WriteByte('\n')
 		}
-		snapshot.Content += content
+		buf.WriteString(content)
 	}
-	snapshot.Content = s.contentWithToolLinesLocked(terminalID, snapshot.Content)
 	snapshot.ChunkIndex = max(snapshot.ChunkIndex, chunkIndex)
 	snapshot.Active = true
 	snapshot.State = "running"
@@ -1220,9 +1274,10 @@ func (s *Store) upsertStructuredChunk(sessionID string, event storeevents.Event,
 	snapshot.ClosesAt = nil
 	snapshot.RetentionSeconds = 0
 	snapshot.UpdatedAt = now
-	previousStatus := snapshot.Status
-	snapshot.Status = DeriveStatus(snapshot.Content, metadata)
-	preserveEphemeralStatusFields(&snapshot.Status, previousStatus)
+	if p := providerLabelFromMetadata(metadata); p != "" {
+		snapshot.Status.ProviderLabel = p
+	}
+	s.markStructuredDirtyLocked(terminalID, metadata)
 	fillDisplayContext(&snapshot)
 	s.byID[terminalID] = snapshot
 	if s.bySession[sessionID] == nil {
@@ -1257,11 +1312,17 @@ func (s *Store) upsertStructuredMessage(sessionID string, event storeevents.Even
 		}
 	}
 	enrichStructuredExecutionSnapshot(&snapshot, sessionID, ownerID, event, metadata)
-	if strings.TrimSpace(snapshot.Content) == "Starting…" {
-		snapshot.Content = ""
+	buf := s.ensureStructuredBaseLocked(terminalID, snapshot)
+	if addition := strings.TrimSpace(content); addition != "" {
+		current := strings.TrimRight(buf.String(), "\n")
+		if !strings.Contains(current, addition) {
+			if current != "" && !strings.HasSuffix(buf.String(), "\n") {
+				buf.WriteByte('\n')
+			}
+			buf.WriteString(addition)
+		}
 	}
-	snapshot.Content = appendStructuredContent(snapshot.Content, content)
-	snapshot.Content = s.contentWithToolLinesLocked(terminalID, snapshot.Content)
+	s.markStructuredDirtyLocked(terminalID, metadata)
 	snapshot.Active = true
 	snapshot.State = "running"
 	snapshot.ProcessState = "live"
@@ -1328,6 +1389,8 @@ func (s *Store) completeStructuredExecution(sessionID string, event storeevents.
 		}
 	}
 	enrichStructuredExecutionSnapshot(&snapshot, sessionID, ownerID, event, metadata)
+	s.materializeStructuredLocked(terminalID, &snapshot)
+	s.clearStructuredBufferLocked(terminalID)
 	if strings.TrimSpace(snapshot.Content) == "" || strings.TrimSpace(snapshot.Content) == "Starting…" {
 		if failed {
 			snapshot.Content = "The execution failed before producing output."
@@ -1655,6 +1718,12 @@ func (s *Store) upsertToolLine(sessionID string, event storeevents.Event, metada
 	if !ok {
 		return
 	}
+	if s.structuredBase[terminalID] != nil {
+		s.markStructuredDirtyLocked(terminalID, metadata)
+		snapshot.UpdatedAt = now
+		s.byID[terminalID] = snapshot
+		return
+	}
 	if strings.TrimSpace(snapshot.Content) == "Starting…" {
 		snapshot.Content = ""
 	}
@@ -1671,8 +1740,16 @@ func (s *Store) contentWithToolLinesLocked(terminalID, content string) string {
 	if lines == nil || len(lines.order) == 0 {
 		return content
 	}
+	return s.renderToolLinesLocked(terminalID, stripTerminalToolLines(content))
+}
 
-	base, doneFooter := splitTerminalDoneFooter(stripTerminalToolLines(content))
+func (s *Store) renderToolLinesLocked(terminalID, content string) string {
+	lines := s.toolLines[terminalID]
+	if lines == nil || len(lines.order) == 0 {
+		return content
+	}
+
+	base, doneFooter := splitTerminalDoneFooter(content)
 	var b strings.Builder
 	b.WriteString(strings.TrimRight(base, "\n"))
 	b.WriteString("\n")
@@ -1826,6 +1903,7 @@ func (s *Store) reconcileTerminalStateLocked(terminalID string, _ time.Time) (Sn
 	if !ok {
 		return Snapshot{}, false
 	}
+	s.materializeStructuredLocked(terminalID, &snapshot)
 	// Do not infer completion from elapsed time. A coding CLI can sit at a stable
 	// prompt for hours while its tmux pane remains alive and ready for input. The
 	// server's tmux watchdog owns liveness reconciliation using the real pane state.
@@ -1851,6 +1929,7 @@ func (s *Store) removeTmuxAliasesLocked(sessionID, terminalID, tmuxSession strin
 		delete(s.byID, existingID)
 		delete(s.forcedInactive, existingID)
 		delete(s.bySession[sessionID], existingID)
+		s.clearStructuredBufferLocked(existingID)
 	}
 	if len(s.bySession[sessionID]) == 0 {
 		delete(s.bySession, sessionID)
@@ -1890,6 +1969,7 @@ func (s *Store) removeTerminalLocked(terminalID string) {
 	delete(s.byID, terminalID)
 	delete(s.forcedInactive, terminalID)
 	delete(s.dismissed, terminalID)
+	s.clearStructuredBufferLocked(terminalID)
 	if snapshot.SessionID == "" {
 		return
 	}

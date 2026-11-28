@@ -25,14 +25,17 @@ var (
 const (
 	maxAssistantPreviewLines = 12
 	maxAssistantPreviewChars = 1200
+	statusScanTailBytes      = 96 << 10
 )
 
 // DeriveStatus extracts a compact progress summary from a terminal screen.
 // It intentionally returns no assistant preview when the screen is ambiguous.
 func DeriveStatus(content string, metadata map[string]interface{}) Status {
 	provider := providerLabel(content, metadata)
-	preview := assistantPreview(content, provider)
-	toolName, toolCount := latestToolSummary(content)
+	scanContent := tailForStatusScan(content)
+	lines := cleanedLines(scanContent)
+	preview := assistantPreviewFromLines(scanContent, lines, provider)
+	toolName, toolCount := latestToolSummaryFromLines(lines)
 
 	toolSummary := ""
 	if toolName != "" {
@@ -67,7 +70,18 @@ func DeriveStatus(content string, metadata map[string]interface{}) Status {
 	}
 }
 
-func providerLabel(content string, metadata map[string]interface{}) string {
+func tailForStatusScan(content string) string {
+	if len(content) <= statusScanTailBytes {
+		return content
+	}
+	tail := content[len(content)-statusScanTailBytes:]
+	if i := strings.IndexByte(tail, '\n'); i >= 0 {
+		tail = tail[i+1:]
+	}
+	return tail
+}
+
+func providerLabelFromMetadata(metadata map[string]interface{}) string {
 	if provider := firstNonEmpty(stringValue(metadata, "provider"), stringValue(metadata, "provider_id")); provider != "" {
 		switch strings.ToLower(provider) {
 		case "claude-code", "claudecode":
@@ -85,6 +99,13 @@ func providerLabel(content string, metadata map[string]interface{}) string {
 		default:
 			return provider
 		}
+	}
+	return ""
+}
+
+func providerLabel(content string, metadata map[string]interface{}) string {
+	if provider := providerLabelFromMetadata(metadata); provider != "" {
+		return provider
 	}
 
 	lower := strings.ToLower(content)
@@ -114,16 +135,20 @@ func isCursorPaneHeader(lower string) bool {
 }
 
 func assistantPreview(content, provider string) string {
+	return assistantPreviewFromLines(content, cleanedLines(content), provider)
+}
+
+func assistantPreviewFromLines(content string, lines []string, provider string) string {
 	switch provider {
 	case "Claude Code":
-		return markerPreview(content, "⏺")
+		return markerPreviewFromLines(lines, "⏺")
 	case "Cursor CLI":
 		// Older Cursor builds prefix each assistant turn with a literal
 		// "Assistant:" header. Newer builds (CLI v2026-05-20 +) drop the label
 		// and emit bare prose. Try the marker first, then fall back to a
 		// section-aware scan that finds the last response block above the
 		// "→ Add a follow-up" boundary.
-		if preview := markerPreview(content, "Assistant:"); preview != "" {
+		if preview := markerPreviewFromLines(lines, "Assistant:"); preview != "" {
 			return preview
 		}
 		return cursorMarkerlessPreview(content)
@@ -147,7 +172,10 @@ func cursorMarkerlessPreview(content string) string {
 	}
 	// Preserve blank lines (cleanedLines drops them) — they are the only
 	// signal that separates the echoed user prompt from the response block.
-	stripped := ansiEscapePattern.ReplaceAllString(content, "")
+	stripped := content
+	if strings.IndexByte(stripped, '\x1b') >= 0 {
+		stripped = ansiEscapePattern.ReplaceAllString(stripped, "")
+	}
 	rawLines := strings.Split(stripped, "\n")
 	lines := make([]string, len(rawLines))
 	for i, raw := range rawLines {
@@ -201,7 +229,10 @@ func cursorMarkerlessPreview(content string) string {
 }
 
 func markerPreview(content, marker string) string {
-	lines := cleanedLines(content)
+	return markerPreviewFromLines(cleanedLines(content), marker)
+}
+
+func markerPreviewFromLines(lines []string, marker string) string {
 	best := ""
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
@@ -228,7 +259,10 @@ func markerPreview(content, marker string) string {
 }
 
 func latestToolSummary(content string) (string, int) {
-	lines := cleanedLines(content)
+	return latestToolSummaryFromLines(cleanedLines(content))
+}
+
+func latestToolSummaryFromLines(lines []string) (string, int) {
 	counts := map[string]int{}
 	latestTool := ""
 	latestCount := 0
@@ -251,9 +285,56 @@ func latestToolSummary(content string) (string, int) {
 	return latestTool, latestCount
 }
 
+func containsFoldASCII(s, lowerNeedle string) bool {
+	n := len(lowerNeedle)
+	if n == 0 {
+		return true
+	}
+	if len(s) < n {
+		return false
+	}
+	first := lowerNeedle[0]
+	firstUpper := first - ('a' - 'A')
+	for i := 0; i <= len(s)-n; i++ {
+		c := s[i]
+		if c != first && c != firstUpper {
+			continue
+		}
+		match := true
+		for j := 1; j < n; j++ {
+			b := s[i+j]
+			if b >= 'A' && b <= 'Z' {
+				b += 'a' - 'A'
+			}
+			if b != lowerNeedle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 func toolFromLine(line string) (string, int) {
 	line = strings.TrimSpace(line)
+	if line == "" {
+		return "", 0
+	}
+	hasCall := containsFoldASCII(line, "call")
+	hasMarker := (strings.ContainsRune(line, '✓') || strings.ContainsRune(line, '•')) && strings.IndexByte(line, '(') >= 0
+	if !hasCall && !hasMarker {
+		return "", 0
+	}
 	for _, pattern := range []*regexp.Regexp{callingToolPattern, geminiToolPattern, codexToolPattern} {
+		if pattern == geminiToolPattern && !hasMarker {
+			continue
+		}
+		if (pattern == callingToolPattern || pattern == codexToolPattern) && !hasCall {
+			continue
+		}
 		match := pattern.FindStringSubmatch(line)
 		if len(match) == 0 {
 			continue
@@ -283,7 +364,10 @@ func isIgnoredToolName(tool string) bool {
 }
 
 func cleanedLines(content string) []string {
-	rawLines := strings.Split(ansiEscapePattern.ReplaceAllString(content, ""), "\n")
+	if strings.IndexByte(content, '\x1b') >= 0 {
+		content = ansiEscapePattern.ReplaceAllString(content, "")
+	}
+	rawLines := strings.Split(content, "\n")
 	lines := make([]string, 0, len(rawLines))
 	for _, raw := range rawLines {
 		line := strings.TrimSpace(raw)
