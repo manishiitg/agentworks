@@ -47,3 +47,22 @@ export function formatRelativeIso(
     style: options?.style,
   })
 }
+
+/**
+ * A chat message's clock label: just the time for today ("09:15"), then
+ * "Yesterday 09:15", "27 Nov 09:15" this year and "27 Nov 2025 09:15" before.
+ * Local time; `locale` is only for tests.
+ */
+export function formatChatClock(at: Date | string | number, now: Date = new Date(), locale?: string): string {
+  const date = at instanceof Date ? at : new Date(at)
+  if (!Number.isFinite(date.getTime())) return ''
+  const time = date.toLocaleTimeString(locale ?? [], { hour: '2-digit', minute: '2-digit' })
+  const dayStart = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const days = Math.round((dayStart(now) - dayStart(date)) / (DAY * 1000))
+  if (days === 0) return time
+  if (days === 1) return `Yesterday ${time}`
+  const day = date.toLocaleDateString(locale ?? [], date.getFullYear() === now.getFullYear()
+    ? { day: 'numeric', month: 'short' }
+    : { day: 'numeric', month: 'short', year: 'numeric' })
+  return `${day} ${time}`
+}

@@ -78,6 +78,7 @@ import { isAgentMessageSendToolCall, parseAgentMessageSend } from '../utils/agen
 import { AgentMessageIdentity } from './AgentMessageIdentity'
 import { AgentInboxMessage, agentInboxMessage } from './AgentInboxMessage'
 import { NextStepsSlotHost } from './chat/NextStepsCard'
+import { formatChatClock } from '../utils/relativeTime'
 
 
 // Message text sizes multiply --chat-scale (default 1), so a product can offer
@@ -285,7 +286,7 @@ function transcriptTimestamp(event: PollingEvent): string {
   const payload = transcriptEventPayload(event)
   const rawTimestamp = event.timestamp || (typeof payload.timestamp === 'string' ? payload.timestamp : '')
   return rawTimestamp && Number.isFinite(Date.parse(rawTimestamp))
-    ? new Date(rawTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? formatChatClock(rawTimestamp)
     : ''
 }
 
@@ -528,7 +529,7 @@ const AssistantTurnHeader = memo(function AssistantTurnHeader({ label = 'Agent' 
 // server's own (the reply event's duration and timestamp); with no duration only "done 8:05 PM" is shown. The word is
 // fixed per turn (from its event id), so it never changes on a redraw.
 const TurnDoneSummary = memo(function TurnDoneSummary({ done }: { done: TurnDone }) {
-  const finished = new Date(done.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const finished = formatChatClock(done.at)
   const text = done.durationNs > 0
     ? `${turnDoneWord(done.key)} for ${formatElapsed(done.durationNs / 1_000_000)} · done ${finished}`
     : `done ${finished}`
