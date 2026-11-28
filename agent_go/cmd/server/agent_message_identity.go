@@ -2,12 +2,74 @@ package server
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
+
+var (
+	agentMessageIdentityRemoteTimeout = 3 * time.Second
+	agentMessageIdentityCacheTTL      = 60 * time.Second
+	agentMessageIdentityGroup         singleflight.Group
+	agentMessageIdentityCacheMu       sync.Mutex
+	agentMessageIdentityCache         = map[string]agentMessageIdentityCacheEntry{}
+)
+
+type agentMessageIdentityCacheEntry struct {
+	at   time.Time
+	data map[string]interface{}
+}
+
+func cloneIdentityMap(in map[string]interface{}) map[string]interface{} {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
+}
+
+func loadAgentMessageIdentityCache(key string) (map[string]interface{}, bool) {
+	if agentMessageIdentityCacheTTL <= 0 {
+		return nil, false
+	}
+	agentMessageIdentityCacheMu.Lock()
+	defer agentMessageIdentityCacheMu.Unlock()
+	entry, ok := agentMessageIdentityCache[key]
+	if !ok {
+		return nil, false
+	}
+	if time.Since(entry.at) >= agentMessageIdentityCacheTTL {
+		delete(agentMessageIdentityCache, key)
+		return nil, false
+	}
+	return cloneIdentityMap(entry.data), true
+}
+
+func storeAgentMessageIdentityCache(key string, data map[string]interface{}) {
+	if agentMessageIdentityCacheTTL <= 0 {
+		return
+	}
+	now := time.Now()
+	agentMessageIdentityCacheMu.Lock()
+	if len(agentMessageIdentityCache) >= 256 {
+		for k, v := range agentMessageIdentityCache {
+			if now.Sub(v.at) >= agentMessageIdentityCacheTTL {
+				delete(agentMessageIdentityCache, k)
+			}
+		}
+	}
+	agentMessageIdentityCache[key] = agentMessageIdentityCacheEntry{at: now, data: cloneIdentityMap(data)}
+	agentMessageIdentityCacheMu.Unlock()
+}
 
 // Identity projection reads no message bodies and sends nothing. The existing
 // inbox participants (or a person already allowed to watch its exact Live chat)
@@ -29,28 +91,61 @@ func (api *StreamingAPI) handleAgentMessageIdentity(w http.ResponseWriter, r *ht
 			externalError(w, 404, "identity_unavailable", "Agent identity is unavailable.")
 			return
 		}
-		read, done := context.WithTimeout(r.Context(), 8*time.Second)
-		defer done()
-		query := url.Values{"inbox_id": {peer}, "direction": {r.URL.Query().Get("direction")}, "message_id": {r.URL.Query().Get("message_id")}}
+		direction := r.URL.Query().Get("direction")
+		messageID := r.URL.Query().Get("message_id")
+		query := url.Values{"inbox_id": {peer}, "direction": {direction}, "message_id": {messageID}}
+		viewerAgentName := ""
 		if session := r.Header.Get("X-Session-ID"); session != "" {
 			// This selects a Live-view authorization identity, not cached labels.
 			if doc, err := defaultProductConversationRegistryStore().loadDocument(r.Context(), productConversationRegistryPath(claims.UserID)); err == nil {
 				for _, record := range doc.Entries {
 					if record.SessionID == session && record.ProfileID == crewProfileID && record.ResourceID != "" && record.ConversationID != "" && ordinaryProjectChatKey(record.ResourceID, record.ConversationKey) && crewProjectOwnedByCallerStrict(claims.UserID, record.WorkspacePath) {
-						query.Set("viewer_agent_name", desktopAppAgentName(desktopMachineID(), record.ConversationID))
+						viewerAgentName = desktopAppAgentName(desktopMachineID(), record.ConversationID)
+						query.Set("viewer_agent_name", viewerAgentName)
 						break
 					}
 				}
 			}
 		}
-		var out map[string]interface{}
-		if err := crewTeamRemoteJSON(read, claims.UserID, connection, http.MethodGet, "/api/agent-message-identity?"+query.Encode(), nil, &out); err != nil {
+		cacheKey := claims.UserID + "\x00" + connectionID + "\x00" + peer + "\x00" + direction + "\x00" + messageID + "\x00" + viewerAgentName
+		if cached, ok := loadAgentMessageIdentityCache(cacheKey); ok {
+			w.Header().Set("Cache-Control", "no-store")
+			externalJSON(w, cached)
+			return
+		}
+		allowed, releaseProbe := desktopProxyTryAcquire(connectionID)
+		if !allowed {
 			externalError(w, 404, "identity_unavailable", "Agent identity is unavailable.")
 			return
 		}
-		out["avatar_connection"] = connectionID
+		if releaseProbe != nil {
+			defer releaseProbe()
+		}
+		val, err, _ := agentMessageIdentityGroup.Do(cacheKey, func() (interface{}, error) {
+			if cached, ok := loadAgentMessageIdentityCache(cacheKey); ok {
+				return cached, nil
+			}
+			read, done := context.WithTimeout(context.WithoutCancel(r.Context()), agentMessageIdentityRemoteTimeout)
+			defer done()
+			var out map[string]interface{}
+			if err := crewTeamRemoteJSON(read, claims.UserID, connection, http.MethodGet, "/api/agent-message-identity?"+query.Encode(), nil, &out); err != nil {
+				var transportErr *crewRemoteTransportError
+				if errors.As(err, &transportErr) {
+					markDesktopProxyUnreachable(connectionID)
+				}
+				return nil, err
+			}
+			clearDesktopProxyUnreachable(connectionID)
+			out["avatar_connection"] = connectionID
+			storeAgentMessageIdentityCache(cacheKey, out)
+			return out, nil
+		})
+		if err != nil {
+			externalError(w, 404, "identity_unavailable", "Agent identity is unavailable.")
+			return
+		}
 		w.Header().Set("Cache-Control", "no-store")
-		externalJSON(w, out)
+		externalJSON(w, cloneIdentityMap(val.(map[string]interface{})))
 		return
 	}
 	snapshot, err := readAgentMessageSnapshot(r.Context())
