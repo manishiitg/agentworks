@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -239,14 +239,14 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {info.setup?.agentbridge_line && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>AgentBridge</span><span className="text-emerald-500">{info.setup.agentbridge_line}</span></div>}
       {!info.owner && !info.sharing && <AgentOnlineCopyStatus setup={info.setup} />}
       {(info.setup || info.onAutomations || info.onAddAutomation) && (clickToOpen
-        ? <AgentDetailSection title="Automations" value={enabled.length ? `${enabled.length} enabled` : info.setup?.automations.length ? 'None enabled' : 'None'}>
+        ? <AgentDetailSection title="Automations" value={automationsSummary(info.setup?.automations ?? [])}>
           {info.setup?.next_automation && <p className="text-muted-foreground">Next: {info.setup.next_automation}</p>}
-          <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />
+          <AgentAutomationList items={info.setup?.automations ?? []} empty="Nothing starts this agent on its own yet." explain />
           {addAutomation}
         </AgentDetailSection>
         : <div className="space-y-1 border-t border-border py-2">
           <div className="flex items-center justify-between gap-2"><span>Automations</span><button type="button" aria-expanded={automationsOpen} onClick={() => setAutomationsOpen(!automationsOpen)} className="text-primary hover:underline">{automationsOpen ? 'Close' : 'Open ›'}</button></div>
-          {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
+          {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="Nothing starts this agent on its own yet." explain />}
           {addAutomation}
         </div>)}
       {((!shareShortcut && actions?.forkTo) || actions?.continueOnline || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
@@ -287,8 +287,35 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   </>
 }
 
-function AgentAutomationList({ items, empty }: { items: TeamTabSetup['automations']; empty: string }) {
-  return <ul className="space-y-1 py-1 text-muted-foreground">{items.map((item, index) => <li key={index}>{item.name} · {item.kind} · {item.line}</li>)}{!items.length && <li>{empty}</li>}</ul>
+// What starts an agent on its own, by kind (owner, 28 Nov). The server lists them; each agent shows only the kinds it has.
+const AUTOMATION_KINDS = [
+  { kind: 'Schedule', plural: 'Schedules', Icon: Clock, tone: 'bg-blue-500/10 text-blue-600 dark:text-blue-400', can: <>run on a <b>schedule</b> (every morning, every hour)</> },
+  { kind: 'Watcher', plural: 'Watchers', Icon: Eye, tone: 'bg-amber-500/10 text-amber-600 dark:text-amber-400', can: <><b>watch</b> for something (a new email, a new PR)</> },
+  { kind: 'Webhook', plural: 'Webhooks', Icon: Webhook, tone: 'bg-purple-500/10 text-purple-600 dark:text-purple-400', can: <>start when a <b>webhook</b> is called</> },
+  { kind: 'Workflow', plural: 'Workflows', Icon: Workflow, tone: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400', can: <>run a <b>workflow</b> built for this project</> },
+] as const
+
+/** "1 schedule · 2 workflows", or None. */
+export function automationsSummary(items: TeamTabSetup['automations']) {
+  const parts = AUTOMATION_KINDS.map(({ kind }) => [kind, items.filter(item => item.kind === kind).length] as const).filter(([, count]) => count)
+  return parts.length ? parts.map(([kind, count]) => `${count} ${kind.toLowerCase()}${count === 1 ? '' : 's'}`).join(' · ') : 'None'
+}
+
+function AgentAutomationList({ items, empty, explain = false }: { items: TeamTabSetup['automations']; empty: string; explain?: boolean }) {
+  if (!items.length) return <div className="py-1 text-muted-foreground"><p>{empty}</p>
+    {explain && <><p className="mt-1">It can:</p><ul className="mt-1 space-y-1">{AUTOMATION_KINDS.map(({ kind, Icon, tone, can }) => <li key={kind} className="flex items-center gap-2"><span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${tone}`}><Icon aria-hidden className="h-3 w-3" /></span><span>{can}</span></li>)}</ul></>}
+  </div>
+  return <div className="py-1">{AUTOMATION_KINDS.map(({ kind, plural, Icon, tone }) => {
+    const list = items.filter(item => item.kind === kind)
+    if (!list.length) return null
+    return <section key={kind} aria-label={plural} className="mt-1.5 first:mt-0">
+      <p className="flex items-center gap-2 font-medium"><span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md ${tone}`}><Icon aria-hidden className="h-3 w-3" /></span>{plural}<span className="font-normal text-muted-foreground">{list.length}</span></p>
+      <ul className="mt-0.5 space-y-0.5">{list.map((item, index) => <li key={index} className="flex min-w-0 items-center gap-2 pl-7">
+        <span aria-label={item.on ? 'on' : 'not running on its own'} className={`h-1.5 w-1.5 shrink-0 rounded-full ${item.on ? 'bg-emerald-500' : 'bg-muted-foreground/40'}`} />
+        <span className="shrink-0 font-medium">{item.name}</span><span className="min-w-0 truncate text-muted-foreground" title={item.line}>{item.line}</span>
+      </li>)}</ul>
+    </section>
+  })}</div>
 }
 
 /** The Crew header shows only the current agent; switching and ordering stay in the sidebar. */

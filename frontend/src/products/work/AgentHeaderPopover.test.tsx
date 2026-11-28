@@ -91,7 +91,8 @@ it('shows compact metadata and opens automation details without sending a turn',
   expect(automation.getAttribute('aria-expanded')).toBe('false')
   expect(dialog.querySelectorAll('[hidden]')).toHaveLength(2)
   await act(async () => (automation as HTMLButtonElement).click())
-  expect(dialog.textContent).toContain('Morning check · Schedule')
+  // Grouped by kind (owner, 28 Nov): the schedule sits under Schedules.
+  expect(dialog.querySelector('section[aria-label="Schedules"]')?.textContent).toContain('Morning check')
   expect(add).not.toHaveBeenCalled()
  } finally { await act(async () => root.unmount());host.remove() }
 })
