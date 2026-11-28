@@ -103,7 +103,7 @@ func serverConnectionNames(conns []desktopConnection) string {
 }
 
 // registerServerProjectFilesTool adds server_project_files to a Mac project's chat for its own owner.
-func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionToolRegistrar, gate *productToolGate, userID, workspacePath string) error {
+func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionToolRegistrar, gate *productToolGate, userID, sessionID, workspacePath string) error {
 	if !IsLocalMode() || userID == "" || workspacePath == "" {
 		return nil
 	}
@@ -166,6 +166,35 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			}
 			return api.createOnlineProjectFromMac(ctx, userID, roots.ID, c, stringToolArg(args, "name"), stringToolArg(args, "purpose"))
 		}
+		// Continue online (#4520): this chat moves to an agent in the Team's online project and keeps working there.
+		if action == "continue_online" || action == "continue_online_answer" {
+			if api.anotherPersonsTurn(sessionID, userID) {
+				return "", fmt.Errorf("only the project's owner moves a chat online, from their own turn")
+			}
+			if action == "continue_online_answer" {
+				result, err := api.continueOnlineAnswer(ctx, userID, roots.ID, stringToolArg(args, "project"), stringToolArg(args, "chat_id"), stringToolArg(args, "message"))
+				if err != nil {
+					return "", err
+				}
+				return out(result)
+			}
+			self, err := api.codeChatsFor(ctx, userID, sessionID, workspacePath)
+			if err != nil {
+				return "", err
+			}
+			plan, err := api.collectContinueOnline(ctx, userID, roots.ID, self.Self.Key)
+			if err != nil {
+				return "", err
+			}
+			if self.Self.Name != "" {
+				plan.Chat = self.Self.Name
+			}
+			result, err := api.runContinueOnline(ctx, userID, plan, stringToolArg(args, "handoff_note"))
+			if err != nil {
+				return "", err
+			}
+			return out(result)
+		}
 		if action == "create_agent" {
 			project, name := strings.TrimSpace(stringToolArg(args, "project")), strings.TrimSpace(stringToolArg(args, "name"))
 			if project == "" || name == "" {
@@ -185,7 +214,7 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			return out(body)
 		}
 		if action != "list" && action != "search" && action != "read" && action != "write" {
-			return "", fmt.Errorf("action must be projects, create_project, create_agent, list, search, read or write")
+			return "", fmt.Errorf("action must be projects, create_project, create_agent, continue_online, continue_online_answer, list, search, read or write")
 		}
 		project := strings.TrimSpace(stringToolArg(args, "project"))
 		if project == "" {
@@ -211,11 +240,14 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 	}
 	parameters := map[string]interface{}{
 		"type": "object", "required": []string{"action"}, "properties": map[string]interface{}{
-			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "create_agent", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name, purpose); create_agent makes a named agent in a server project you own or co-own (project, name); list, search, read and write work on one project's files."},
+			"action":            map[string]interface{}{"type": "string", "enum": []string{"projects", "create_project", "create_agent", "continue_online", "continue_online_answer", "list", "search", "read", "write"}, "description": "projects lists the server projects you can open; create_project makes a new online project for this project's Team (name, purpose); create_agent makes a named agent in a server project you own or co-own (project, name); continue_online moves this chat to a new agent in the Team's online project (or a new one) so it keeps working with the Mac closed (handoff_note); continue_online_answer answers that agent's question during the handoff (project, chat_id, message); list, search, read and write work on one project's files."},
+			"handoff_note":      map[string]interface{}{"type": "string", "description": "continue_online: your note for the online agent: the task, where it stands, decisions made, what is next, and keys or access it will need (names only, never values)."},
+			"chat_id":           map[string]interface{}{"type": "string", "description": "continue_online_answer: the online agent's chat_id from the continue_online result."},
+			"message":           map[string]interface{}{"type": "string", "description": "continue_online_answer: your answer to the online agent."},
 			"name":              map[string]interface{}{"type": "string", "description": "create_project: the new online project's name, named for its job. create_agent: the new agent's name."},
 			"purpose":           map[string]interface{}{"type": "string", "description": "create_project: one or two sentences on what it does; becomes its Main's purpose."},
 			"server":            map[string]interface{}{"type": "string", "description": "Saved server name; optional when this Mac is signed in to one server."},
-			"project":           map[string]interface{}{"type": "string", "description": "Project ID from action=projects (create_agent, list, search, read, write)."},
+			"project":           map[string]interface{}{"type": "string", "description": "Project ID from action=projects (create_agent, list, search, read, write) or from continue_online (continue_online_answer)."},
 			"path":              map[string]interface{}{"type": "string", "description": "Project-relative file path (read, write) or folder to start from (list, search)."},
 			"glob":              map[string]interface{}{"type": "string", "description": "Optional name pattern for list and search, e.g. **/*.md."},
 			"depth":             map[string]interface{}{"type": "integer", "minimum": 1, "maximum": 8},
@@ -230,7 +262,7 @@ func (api *StreamingAPI) registerServerProjectFilesTool(registrar definitionTool
 			"expected_revision": map[string]interface{}{"type": "string", "description": "write: refuse if the file changed since this revision (from read)."},
 			"request_id":        map[string]interface{}{"type": "string", "description": "write: reuse only to retry the identical write."},
 		}}
-	description := "Read and write the files of a project on a server this Mac is signed in to, as you. action=projects lists the server projects you can open; then list, search, read or write one project's files by its ID. The server decides access: its owner and co-owners may write any editable file, people it is shared with only under shared/<their id>/. Private areas (chats, databases, hidden folders) stay closed. create_project makes a new project on the server, owned by you, with this project's Team in its Users, so the Team's people and agents can use it and its agents run 24/7; then hand it the job with messages (its Main)."
+	description := "Read and write the files of a project on a server this Mac is signed in to, as you. action=projects lists the server projects you can open; then list, search, read or write one project's files by its ID. The server decides access: its owner and co-owners may write any editable file, people it is shared with only under shared/<their id>/. Private areas (chats, databases, hidden folders) stay closed. create_project makes a new project on the server, owned by you, with this project's Team in its Users, so the Team's people and agents can use it and its agents run 24/7; then hand it the job with messages (its Main). When the person asks to continue this chat online, write a handoff note and call continue_online once: it copies this conversation, pushes changed repositories as a branch, copies the files this chat changed and the project's instructions, memory and skills, and starts a new agent in the Team's online project with your note; answer its questions with continue_online_answer."
 	gate.Declare(serverProjectFilesToolName)
 	return registrar.RegisterCustomTool(serverProjectFilesToolName, description, parameters, execute, "code_chat_tools")
 }

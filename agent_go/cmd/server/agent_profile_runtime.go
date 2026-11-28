@@ -1077,7 +1077,7 @@ func (api *StreamingAPI) registerAgentProfileTools(registrar definitionToolRegis
 			return err
 		}
 		// A Mac project's owner reads and writes server projects' files as themselves (#3663).
-		if err := api.registerServerProjectFilesTool(registrar, gate, userID, workspacePath); err != nil {
+		if err := api.registerServerProjectFilesTool(registrar, gate, userID, sessionID, workspacePath); err != nil {
 			return err
 		}
 	}

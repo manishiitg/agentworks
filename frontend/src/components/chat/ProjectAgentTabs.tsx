@@ -7,6 +7,7 @@ import { OnlineAgentLine } from '../../products/work/OnlineAgentLine'
 import { PendingAgentForks } from './PendingAgentForks'
 import { LocalMcpImportDialog } from '../../products/work/LocalMcpImport'
 import { ForkToTeammate } from './ForkToTeammate'
+import { ContinueOnlineDialog } from './ContinueOnline'
 import { continueInTerminal } from './TerminalResume'
 import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
@@ -83,6 +84,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   const activeTabId = useChatStore(state => state.activeTabId)
   const canonicalSessionId = useChatStore(state => state.chatTabs[canonicalTabId]?.sessionId)
   const [forkTo, setForkTo] = useState<{ id: string; name: string } | null>(null)
+  const [continueOnline, setContinueOnline] = useState<{ tabId: string; key: string; name: string } | null>(null)
   const [newTabName, setNewTabName] = useState<string | null>(null)
   const [addMode, setAddMode] = useState<'choose' | 'new' | 'fork' | null>(null)
   // New agent's Where it runs: 'mac', or an online project's ID the Team uses and the person owns.
@@ -210,6 +212,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
   // Someone else's Mac Crew (a teammate's view) names its owner's Mac, from the server's Team reading.
   const teamState = useTeamTab(placeProject)
   const team = teamState.view
+  // This Mac's own project: paired with its Team (localProject) or the Mac app's Crew before pairing (unbound).
+  const macProject = teamState.target?.localProject || (teamState.unbound ? placeProject : undefined)
   // Online projects the Team uses that this person owns: New agent may run there instead of on the Mac.
   const onlineChoices = (team?.online_projects || []).filter(item => item.can_make_agents && item.project_id)
   const crewOwner = team && !team.can_switch && !team.team.change_on_mac ? team.people.find(person => person.note === 'owner')?.name : undefined
@@ -326,6 +330,10 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     return {
       forkTo: surface === 'work' && canControl(tab) && team?.team.on && shareSource ? () => setForkTo({ id: shareSource.id, name: shareSource.name }) : undefined,
       fork: surface === 'work' && isAgentTab(tab) && canControl(tab) ? () => forkChatTab(tab.tabId) : undefined,
+      // Continue online (#4520): only an own chat of a project on this Mac (paired with its Team, or not yet); an online
+      // agent's tab already runs on the server. The Mac's readiness check says what is missing.
+      continueOnline: surface === 'work' && isAgentTab(tab) && canControl(tab) && macProject && !tab.metadata?.agentProfileOnlineProject && (tab.metadata?.agentProfileConversationKey || tab.tabId === canonicalTabId)
+        ? () => setContinueOnline({ tabId: tab.tabId, key: tab.metadata?.agentProfileConversationKey || macProject, name: tabLabel(tab) }) : undefined,
       terminal: surface === 'work' && isAgentTab(tab) && canControl(tab) && (tab.metadata?.agentProfileChatProvider || tab.metadata?.agentProfileEngine) === 'claude-code' ? () => continueInTerminal(tab.tabId) : undefined,
       orderKey: key,
       renameDraft: key ? sideChatName(tab) : undefined,
@@ -673,6 +681,7 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     <div className="flex min-w-0 flex-1 items-center gap-1">
       {importMcp && placeProject && <LocalMcpImportDialog projectId={placeProject} onClose={() => setImportMcp(false)} />}
       {forkTo && <ForkToTeammate state={teamState} agentId={forkTo.id} name={forkTo.name} close={() => setForkTo(null)} />}
+      {continueOnline && macProject && <ContinueOnlineDialog project={macProject} chatKey={continueOnline.key} tabId={continueOnline.tabId} name={continueOnline.name} close={() => setContinueOnline(null)} />}
       {/* Crew always uses the same current-agent header. Other products keep their tabs. */}
       {!phone && surface !== 'work' && <ProjectWorkspaceTitle name={projectName} surface={surface} />}
       {surface === 'work' && (openTab?.metadata?.agentProfileOnlineProject ? <OnlineAgentLine tab={openTab} name={sideChatName(openTab)} team={teamState} /> : watchingOther ? <TeammateChatIdentity tabId={openTab?.tabId} /> : <AgentHeaderLine agent={headerAgent} crewName={projectName} onOpenIdentity={onOpenIdentity} />)}

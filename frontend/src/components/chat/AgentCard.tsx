@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -62,6 +62,8 @@ export const useOpenAgentStore = create<{ tabId: string | null; info: AgentCardI
 /** What the person may do with one agent, from the tab strip's own handlers; a missing one is not theirs to do. */
 export interface CrewAgentActions {
   forkTo?: () => void
+  /** Continue online (#4520): move this Mac chat to an agent in the Team's online project. */
+  continueOnline?: () => void
   fork?: () => unknown
   terminal?: () => void | Promise<void>
   /** The saved order's key, for dragging rows. */
@@ -247,9 +249,9 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {automationsOpen && <AgentAutomationList items={info.setup?.automations ?? []} empty="No automations yet." />}
           {addAutomation}
         </div>)}
-      {((!shareShortcut && actions?.forkTo) || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
+      {((!shareShortcut && actions?.forkTo) || actions?.continueOnline || actions?.terminal || onRename || (clickToOpen && (actions?.fork || actions?.rename || actions?.setSidebarHidden || info.onRemove)) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing)) && (() => {
         const menuRow = 'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-foreground/90 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-wait disabled:opacity-70 max-md:min-h-10 max-md:text-sm'
-        const hasUpperAction = Boolean((!shareShortcut && actions?.forkTo) || (clickToOpen && actions?.fork) || actions?.terminal || onRename || (clickToOpen && actions?.rename) || (clickToOpen && actions?.setSidebarHidden) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing))
+        const hasUpperAction = Boolean((!shareShortcut && actions?.forkTo) || actions?.continueOnline || (clickToOpen && actions?.fork) || actions?.terminal || onRename || (clickToOpen && actions?.rename) || (clickToOpen && actions?.setSidebarHidden) || (shareShortcut && !shareInfo && info.sharing) || (!info.sharing && info.onSharing))
         return <div className={clickToOpen ? 'mt-1 flex flex-col gap-0.5 border-t border-border pt-1.5' : 'flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 max-md:[&>button]:min-h-10'}>
         {renameDraft !== null ? <input autoFocus aria-label={`New name for ${info.name}`} value={renameDraft} onChange={event => setRenameDraft(event.target.value)}
           onKeyDown={event => {
@@ -265,6 +267,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           }} className={menuRow}>
             {forking ? <Loader2 aria-hidden="true" className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" /> : <GitFork aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}{forking ? 'Forking chat…' : 'Fork chat'}
           </button>}
+          {actions?.continueOnline && <button type="button" onClick={() => finish(actions.continueOnline!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><Cloud aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Continue online…</button>}
           {/* Resume this agent's chat in your own Claude Code: in the agent's top menu (owner, 20 Nov), not the left menu. */}
           {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><SquareTerminal aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Continue in my terminal</button>}
           {(onRename || (clickToOpen && actions?.rename)) && <button type="button" onClick={() => onRename ? finish(onRename) : setRenameDraft(actions?.renameDraft || info.name)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><Pencil aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Rename</button>}
