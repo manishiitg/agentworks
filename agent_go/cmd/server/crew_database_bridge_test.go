@@ -123,6 +123,7 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 				t.Fatal(err)
 			}
 			var actions []any
+			var hasFromProject bool
 			for _, tool := range catalog {
 				if tool.Name != "database" {
 					continue
@@ -130,6 +131,10 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 				props, _ := tool.Schema["properties"].(map[string]any)
 				choice, _ := props["action"].(map[string]any)
 				actions, _ = choice["enum"].([]any)
+				_, hasFromProject = props["from_project"]
+			}
+			if hasFromProject == run {
+				t.Fatalf("wrong from_project exposure in native catalog (run=%t, has=%t)", run, hasFromProject)
 			}
 			for _, action := range []string{"query", "describe", "integrity_check"} {
 				if !slices.Contains(actions, any(action)) {
@@ -171,5 +176,182 @@ func TestCrewDatabaseBridgeReadsInBuilderAndRun(t *testing.T) {
 			}
 			t.Logf("CREW_DATABASE_BRIDGE mode=%s actions=%v stored_row=42", name, actions)
 		})
+	}
+}
+
+func TestCrewDatabaseFromProjectReadOnly(t *testing.T) {
+	f, upstream := newExternalCrewCommandFixture(t)
+	f.api.logger = loggerv2.NewNoop()
+	owners := projectOwnersAt(os.Getenv("AGENTWORKS_STATE_ROOT"))
+	if err := owners.Register(projectOwnerRecord{Product: "work", Folder: "source-proj", ProjectID: "source", OwnerID: "owner"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := owners.Register(projectOwnerRecord{Product: "work", Folder: "foreign-proj", ProjectID: "foreign", OwnerID: "other"}); err != nil {
+		t.Fatal(err)
+	}
+	f.write(t, "Crew/source-proj/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"source","title":"Source Project","session_id":"sess-source"}`)
+	f.write(t, "Crew/source-proj/.agentworks/settings/workflow.json", `{"id":"source","label":"Source Project","created_by":"owner"}`)
+	f.write(t, "_users/other/Crew/foreign-proj/.agentworks/settings/product.json", `{"schema_version":1,"product":"work","id":"foreign","title":"Foreign Project","session_id":"sess-foreign"}`)
+	f.write(t, "_users/other/Crew/foreign-proj/.agentworks/settings/workflow.json", `{"id":"foreign","label":"Foreign Project","created_by":"other"}`)
+
+	for _, entry := range []struct {
+		dir string
+		sql string
+	}{
+		{filepath.Join(f.docs, externalCommandCrewAutomation, "db"), "CREATE TABLE own_items (label TEXT); INSERT INTO own_items VALUES ('current-project')"},
+		{filepath.Join(f.docs, "Crew/source-proj/.agentworks/db"), "CREATE TABLE tax_records (fy TEXT, amount INTEGER); INSERT INTO tax_records VALUES ('2025-26', 9900)"},
+		{filepath.Join(f.docs, "_users/other/Crew/foreign-proj/.agentworks/db"), "CREATE TABLE secret_records (note TEXT); INSERT INTO secret_records VALUES ('private-other')"},
+	} {
+		if err := os.MkdirAll(entry.dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		db, err := sql.Open("sqlite", filepath.Join(entry.dir, "db.sqlite"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(entry.sql); err != nil {
+			db.Close()
+			t.Fatal(err)
+		}
+		db.Close()
+	}
+
+	router := gin.New()
+	router.POST("/api/query", workspacehandlers.QueryWorkflowDB)
+	parsed, _ := url.Parse(upstream)
+	router.NoRoute(gin.WrapH(httputil.NewSingleHostReverseProxy(parsed)))
+	service := httptest.NewServer(router)
+	defer service.Close()
+	t.Setenv("WORKSPACE_API_URL", service.URL)
+	t.Setenv("MCP_API_URL", service.URL)
+	t.Setenv("MCP_API_TOKEN", "from-project-test-token")
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("MCP_BRIDGE_BINARY", "/bin/false")
+
+	config := filepath.Join(t.TempDir(), "mcp.json")
+	if err := os.WriteFile(config, []byte(`{"mcpServers":{}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	makeBuilder := func(t *testing.T, session string, claims *UserClaims, readOnly bool) (context.Context, func()) {
+		t.Helper()
+		common.SetSessionFolderGuard(session, []string{externalCommandCrewRoot}, nil)
+		common.SetSessionCrewReader(session, readOnly)
+		common.SetSessionCrewAskReadOnly(session, readOnly)
+		stepworkflow.ConfigureManagedWorkflowDBSession(session, externalCommandCrewRoot, !readOnly)
+		profile := &resolvedAgentProfile{Definition: workproduct.BuiltinAgentProfile(), ToolCallerClaims: claims}
+		req := QueryRequest{AgentProfileID: "work", SelectedFolder: externalCommandCrewRoot}
+		if err := applyCrewChatMode(profile, &req, readOnly); err != nil {
+			t.Fatal(err)
+		}
+		gate := newProductToolGate(profile)
+		if readOnly {
+			gate.DenyReaderTools(crewReaderDeniedTools()...)
+			gate.DenyWhere(func(name string) bool { return !crewAskAllowedTools[name] })
+		}
+		bridge := []string{}
+		for _, name := range profile.Definition.Runtime.BridgeTools {
+			if gate.Admit(name) {
+				bridge = append(bridge, name)
+			}
+		}
+		ctx := context.WithValue(context.Background(), common.ChatSessionIDKey, session)
+		wrapper, err := agent.NewLLMAgentWrapper(ctx, agent.LLMAgentConfig{
+			Name: "crew-db-from-project", Provider: llm.ProviderCodexCLI, ModelID: "gpt-6-luna",
+			ServerName: "NO_SERVERS", ConfigPath: config, SessionID: session, MaxTurns: 1,
+			UseCodeExecutionMode: true, CodingAgentToolsMode: "mcp_only", ForceStructuredCodingAgent: true,
+			CodingAgentWorkingDir: t.TempDir(), AdditionalBridgeTools: bridge, AdmitTool: gate.Admit,
+		}, nil, loggerv2.NewNoop())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := f.api.registerWorkDashboardTools(wrapper, profile, session, claims.UserID, externalCommandCrewRoot, readOnly); err != nil {
+			wrapper.Close()
+			t.Fatal(err)
+		}
+		callCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		_, _ = wrapper.Invoke(callCtx, "Prepare tools.")
+		cancel()
+		return ctx, func() {
+			wrapper.Close()
+			common.ClearSessionShellConfig(session)
+		}
+	}
+
+	// 1. Builder reads own DB when from_project is omitted, and reads source-proj when from_project is set.
+	ownerCtx, cleanup := makeBuilder(t, "crew-db-from-owner", &UserClaims{UserID: "owner"}, false)
+	defer cleanup()
+
+	ownOut, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action": "query",
+		"sql":    "SELECT label FROM own_items",
+	})
+	if err != nil || !strings.Contains(ownOut, "current-project") {
+		t.Fatalf("own DB query failed: %q err=%v", ownOut, err)
+	}
+	descOut, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "Crew/source-proj",
+	})
+	if err != nil || !strings.Contains(descOut, "tax_records") {
+		t.Fatalf("from_project describe failed: %q err=%v", descOut, err)
+	}
+	rowsOut, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "query",
+		"from_project": "Crew/source-proj",
+		"sql":          "SELECT fy, amount FROM tax_records",
+	})
+	if err != nil || !strings.Contains(rowsOut, "9900") {
+		t.Fatalf("from_project query failed: %q err=%v", rowsOut, err)
+	}
+
+	// 2. Foreign unshared project and non-canonical paths are refused.
+	if out, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "_users/other/Crew/foreign-proj",
+	}); err == nil {
+		t.Fatalf("expected foreign unshared project refusal, got: %s", out)
+	}
+	if out, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "Crew/source-proj/db/db.sqlite",
+	}); err == nil {
+		t.Fatalf("expected non-root path refusal, got: %s", out)
+	}
+	if out, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "../escape",
+	}); err == nil {
+		t.Fatalf("expected traversal path refusal, got: %s", out)
+	}
+	if out, err := codeexec.CallCustomToolWithSession(ownerCtx, "crew-db-from-owner", "database", map[string]any{
+		"action":       "mutate",
+		"from_project": "Crew/source-proj",
+		"sql":          "DELETE FROM tax_records",
+	}); err == nil {
+		t.Fatalf("expected mutate with from_project refusal, got: %s", out)
+	}
+
+	// 3. Bearer token limited to "team" cannot read "source".
+	scopedClaims := crewWriter("owner")
+	scopedClaims.AccessToken.CrewIDs = []string{"team"}
+	scopedClaims.AccessToken.AllCrews = false
+	scopedCtx, cleanupScoped := makeBuilder(t, "crew-db-from-scoped", scopedClaims, false)
+	defer cleanupScoped()
+	if out, err := codeexec.CallCustomToolWithSession(scopedCtx, "crew-db-from-scoped", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "Crew/source-proj",
+	}); err == nil || !strings.Contains(err.Error(), "cannot read") {
+		t.Fatalf("expected scoped token refusal, got out=%q err=%v", out, err)
+	}
+
+	// 4. Run (readOnly) chat does not get from_project and cannot read source-proj.
+	runCtx, cleanupRun := makeBuilder(t, "crew-db-from-run", &UserClaims{UserID: "other"}, true)
+	defer cleanupRun()
+	if out, err := codeexec.CallCustomToolWithSession(runCtx, "crew-db-from-run", "database", map[string]any{
+		"action":       "describe",
+		"from_project": "Crew/source-proj",
+	}); err == nil && strings.Contains(out, "tax_records") {
+		t.Fatalf("Run chat leaked source-proj database: %s", out)
 	}
 }

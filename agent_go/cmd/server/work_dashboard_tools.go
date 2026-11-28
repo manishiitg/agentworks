@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -12,6 +13,7 @@ import (
 	agent "github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentwrapper"
 	todo_creation_human "github.com/manishiitg/coding-agent-loop/agent_go/pkg/orchestrator/agents/workflow/step_based_workflow"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/workspace"
+	wf "github.com/manishiitg/coding-agent-loop/workspace/workflowfiles"
 )
 
 // registerWorkDashboardTools exposes the same managed SQLite and live HTML
@@ -58,6 +60,15 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 				return fmt.Errorf("decode %s parameters: %w", name, err)
 			}
 		}
+		if !readOnly && name == "query_workflow_db" {
+			if props, ok := parameters["properties"].(map[string]interface{}); ok {
+				props["from_project"] = map[string]interface{}{
+					"type":        "string",
+					"description": "Read another accessible project's or workflow's database read-only instead of this one's: its workspace_path from workspace action=references_list. Use describe and query to inspect or copy tables into this project with mutate.",
+				}
+			}
+			executor = api.wrapCrewDatabaseReadFromProject(executor, userID, profile.ToolCallerClaims)
+		}
 		if err := llmAgent.RegisterCustomTool(name, definition.Function.Description, parameters, executor, registry.Categories[name]); err != nil {
 			return fmt.Errorf("register %s: %w", name, err)
 		}
@@ -102,4 +113,80 @@ func (api *StreamingAPI) registerWorkDashboardTools(
 		return err
 	}
 	return nil
+}
+
+// wrapCrewDatabaseReadFromProject lets a project Builder run read-only database
+// queries (describe/query/integrity_check) against another accessible project or
+// workflow named by from_project, matching dashboard from_project. Mutations stay
+// strictly bound to the current project.
+func (api *StreamingAPI) wrapCrewDatabaseReadFromProject(
+	base func(context.Context, map[string]any) (string, error),
+	userID string,
+	caller *UserClaims,
+) func(context.Context, map[string]any) (string, error) {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		fromRaw, _ := args["from_project"].(string)
+		from := strings.TrimRight(strings.TrimSpace(fromRaw), "/")
+		if from == "" {
+			return base(ctx, args)
+		}
+		claims := caller
+		if current := GetUserFromContext(ctx); current != nil && current.UserID != userID {
+			return "", fmt.Errorf("Open your own project chat to read another project's database")
+		}
+		if claims == nil || claims.UserID != userID {
+			return "", fmt.Errorf("Open your own project chat to read another project's database")
+		}
+		ctx = context.WithValue(ctx, UserContextKey, claims)
+		targetRoot, err := api.resolveCrewDatabaseReadTarget(ctx, claims, from)
+		if err != nil {
+			return "", err
+		}
+		queryArgs := make(map[string]any, len(args))
+		for k, v := range args {
+			if k == "from_project" {
+				continue
+			}
+			queryArgs[k] = v
+		}
+		client := api.reportPreviewWorkspaceClient(ctx, claims, targetRoot)
+		return virtualtools.RunWorkflowDBQuery(ctx, client, path.Join(targetRoot, "db", "db.sqlite"), queryArgs)
+	}
+}
+
+func (api *StreamingAPI) resolveCrewDatabaseReadTarget(ctx context.Context, claims *UserClaims, root string) (string, error) {
+	unavailable := fmt.Errorf("project or workflow database unavailable; pick a workspace_path from workspace action=references_list that you can open")
+	clean, err := wf.CleanRelative(root)
+	if err != nil || clean != root {
+		return "", fmt.Errorf("from_project must be a canonical workspace_path from workspace action=references_list")
+	}
+	if crew, ok := resolveCrewPath(ctx, claims.UserID, clean); ok && crew.Rest == "" {
+		if crewAccessFor(claims, crew) == crewAccessNone {
+			return "", unavailable
+		}
+		product, _, _ := projectProductForPath(crew.Root)
+		manifest, err := readCrewProjectManifests(ctx, product.ProfileID, crew.Root)
+		if err != nil {
+			return "", unavailable
+		}
+		id := path.Base(crew.Root)
+		if strings.TrimSpace(manifest.ID) != "" {
+			id = strings.TrimSpace(manifest.ID)
+		}
+		if claims.AccessToken != nil && (!claims.AccessToken.Allows("crews:read") || !claims.AccessToken.AllowsCrew(id)) {
+			return "", fmt.Errorf("this connection cannot read that project's database")
+		}
+		return crew.Root, nil
+	}
+	if !isReportRunWorkflowRoot(clean) {
+		return "", unavailable
+	}
+	access, manifest := workflowAccessForWorkspacePath(ctx, claims, clean)
+	if access == WorkflowAccessNone || manifest == nil || manifest.Kind == "relay" || !userAllowedWorkflowID(claims, manifest.ID) {
+		return "", unavailable
+	}
+	if claims.AccessToken != nil && (!claims.AccessToken.Allows("workflows:read") || !claims.AccessToken.AllowsWorkflow(manifest.ID)) {
+		return "", fmt.Errorf("this connection cannot read that workflow's database")
+	}
+	return clean, nil
 }

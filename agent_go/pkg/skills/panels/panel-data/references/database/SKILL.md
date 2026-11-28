@@ -1,6 +1,6 @@
 # Database
 
-Use `database action=query` to inspect rows, `describe` for tables/columns and `integrity_check` for the existing database check. Use `mutate`, `migrate` or `snapshot` only where offered; each keeps its current owner, connection, step and file-access checks. Discover the current schema and target fields first. Keep SQL parameters separate from the statement. Do not modify SQLite/WAL/SHM files directly. Read back the requested rows or schema through the same database service.
+Use `database action=query` to inspect rows, `describe` for tables/columns and `integrity_check` for the existing database check. Use `mutate`, `migrate` or `snapshot` only where offered; each keeps its current owner, connection, step and file-access checks. Discover the current schema and target fields first. Keep SQL parameters separate from the statement. Do not modify SQLite/WAL/SHM files directly. Read back the requested rows or schema through the same database service. To read or copy tables from another accessible project (no `#` tag needed), find its `workspace_path` with `workspace action=references_list`, call `database action=describe` and `action=query` with `from_project=<workspace_path>`, and recreate the tables and rows here with `mutate`.
 
 For database-backed dashboard data and project actions, Read [the detailed procedure](references/project-data.md).
 
