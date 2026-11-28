@@ -172,10 +172,26 @@ every feature by whether it shortens the path from Build to Share to Use.
 Older per-product schedules, webhooks and Slack wiring predate this model.
 Converge them onto the shared entry points rather than adding new variants.
 
-## Prompts and skills stay small
+## Prompts and skills stay small, and reuse the cache
 
 Keep system prompts small. Put detailed procedures and feature-specific
 guidance in the relevant skills, and keep those skills current.
+
+Everything that goes to a model must reuse the prompt cache and spend as few
+tokens as possible:
+
+1. Keep the system prompt and tool list the same from turn to turn. Text that
+   changes every turn (times, counters, IDs, live status, lists in a random
+   order) does not belong there; put it in the person's message or a tool
+   result. Text from saved settings may be in it, since it changes only when
+   the person changes them.
+2. Put stable parts first and parts that change rarely after them, so a change
+   invalidates as little of the cached prefix as possible.
+3. Prefer a short pointer to a skill or a tool over pasting its content. Keep
+   tool results short: page or filter large outputs instead of returning
+   everything.
+4. When you add to a prompt, say in the pull request what it costs per turn and
+   when it changes.
 
 ## Tests
 
