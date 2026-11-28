@@ -2,6 +2,7 @@ package acpcli
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -124,4 +125,52 @@ func TestAgySilentPromptWithAFinishedReplyEndsTheTurn(t *testing.T) {
 	}
 	peer.wait(t)
 	CloseAgentSession(owner, "agy")
+}
+
+// T3 Code #41923: agy keeps its checklist with "Run update_steps" tool calls, not ACP plan updates. Each call becomes
+// the chat's task list (done reads as completed) and never shows as a tool row; other tools still do.
+func TestAgyUpdateStepsBecomesTheTaskList(t *testing.T) {
+	agent, _ := lookupAny("agy")
+	s := &session{agent: agent, sessionID: "agy_sess"}
+	tools := map[string]*toolCall{}
+	var text strings.Builder
+	var chunks []llmtypes.StreamChunk
+	emit := func(c llmtypes.StreamChunk) { chunks = append(chunks, c) }
+	update := func(raw string) {
+		t.Helper()
+		var u sessionUpdate
+		if err := json.Unmarshal([]byte(raw), &u); err != nil {
+			t.Fatal(err)
+		}
+		s.handleUpdate(u, map[string]any{}, tools, &text, emit)
+	}
+	update(`{"sessionUpdate":"tool_call","toolCallId":"steps-1","title":"Run update_steps","kind":"other","status":"in_progress","rawInput":{"steps":[{"title":"Create a.txt","status":"in_progress"},{"title":"Create b.txt","status":"pending"}]}}`)
+	update(`{"sessionUpdate":"tool_call_update","toolCallId":"steps-1","status":"completed"}`)
+	update(`{"sessionUpdate":"tool_call","toolCallId":"steps-2","title":"Run update_steps","status":"in_progress","rawInput":{"steps":[{"title":"Create a.txt","status":"done"},{"title":"Create b.txt","status":"in_progress"}]}}`)
+	update(`{"sessionUpdate":"tool_call","toolCallId":"cmd-1","title":"Run ls","kind":"execute","status":"in_progress","rawInput":{"CommandLine":"ls"}}`)
+
+	var plans []string
+	starts := 0
+	for _, c := range chunks {
+		switch c.Type {
+		case llmtypes.StreamChunkTypeCodingAgentPlan:
+			var row []string
+			for _, item := range c.CodingAgentPlan.Items {
+				row = append(row, item.Text+"="+item.Status)
+			}
+			if c.CodingAgentPlan.Provider != "agy-cli" {
+				t.Fatalf("plan provider = %q", c.CodingAgentPlan.Provider)
+			}
+			plans = append(plans, strings.Join(row, ","))
+		case llmtypes.StreamChunkTypeToolCallStart:
+			starts++
+			if c.ToolCallID != "cmd-1" {
+				t.Fatalf("the checklist showed as a tool row: %+v", c)
+			}
+		}
+	}
+	want := []string{"Create a.txt=running,Create b.txt=pending", "Create a.txt=completed,Create b.txt=running"}
+	if strings.Join(plans, "|") != strings.Join(want, "|") || starts != 1 {
+		t.Fatalf("plans = %q, tool rows = %d; want %q and 1", plans, starts, want)
+	}
 }

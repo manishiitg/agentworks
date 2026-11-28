@@ -74,6 +74,8 @@ type toolCall struct {
 	name, args, result string
 	started            time.Time
 	open, ended        bool
+	// steps marks the agent's checklist tool (Agent.StepsTool): shown as the task list, never as a tool row.
+	steps bool
 }
 
 type sessionUpdate struct {
@@ -371,6 +373,17 @@ func (s *session) handleUpdate(u sessionUpdate, meta map[string]any, tools map[s
 		emit(llmtypes.StreamChunk{Type: kind, Content: content.Text, Metadata: chunkMeta})
 	case "tool_call", "tool_call_update":
 		t := tools[u.ToolCallID]
+		if t == nil && s.agent.StepsTool != "" && u.Title == "Run "+s.agent.StepsTool && (u.ToolKind == "" || u.ToolKind == "other") {
+			t = &toolCall{started: time.Now(), steps: true}
+			tools[u.ToolCallID] = t
+		}
+		if t != nil && t.steps {
+			if plan, ok := stepsPlan(u.RawInput); ok {
+				plan.Provider, plan.PlanID = s.agent.providerID(), s.currentSessionID()
+				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeCodingAgentPlan, CodingAgentPlan: plan, Metadata: meta})
+			}
+			return
+		}
 		if t == nil {
 			t = &toolCall{started: time.Now()}
 			tools[u.ToolCallID] = t
@@ -441,6 +454,33 @@ func (s *session) handleUpdate(u sessionUpdate, meta map[string]any, tools map[s
 
 // toolContentText summarizes a tool call's content blocks: text as is, a
 // diff as its path and changed line counts, a terminal by its id.
+// stepsPlan reads a checklist tool's input ({"steps":[{"title","status"}]}, status pending, in_progress or done) as
+// the task list. Anything else leaves the last list in place.
+func stepsPlan(raw json.RawMessage) (*llmtypes.CodingAgentPlan, bool) {
+	var input struct {
+		Steps []struct {
+			Title  string `json:"title"`
+			Status string `json:"status"`
+		} `json:"steps"`
+	}
+	if len(raw) == 0 || json.Unmarshal(raw, &input) != nil || input.Steps == nil {
+		return nil, false
+	}
+	entries := make([]map[string]string, 0, len(input.Steps))
+	for _, step := range input.Steps {
+		status := step.Status
+		switch status {
+		case "done":
+			status = "completed"
+		case "":
+			status = "pending"
+		}
+		entries = append(entries, map[string]string{"content": step.Title, "status": status})
+	}
+	body, _ := json.Marshal(map[string]any{"entries": entries})
+	return llmtypes.ParseCodingAgentPlan(body, "entries")
+}
+
 func toolContentText(raw json.RawMessage) string {
 	var blocks []struct {
 		Type    string `json:"type"`
