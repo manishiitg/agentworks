@@ -373,7 +373,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       inTeam: mine && inTeamFor(tab.metadata?.agentProfileConversationKey, main),
       teamShare: mine ? teamShareFor(tab.metadata?.agentProfileConversationKey, main) : undefined,
       shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main,
-      place: chat?.chat_location === 'mac' ? 'mac' : undefined,
+      // Your own online agent runs on the server, so it shows the cloud like a server project (owner, 28 Nov).
+      place: tab.metadata?.agentProfileOnlineProject ? 'server' : chat?.chat_location === 'mac' ? 'mac' : undefined,
       ownerId: mine ? undefined : tabOwnerId(tab), owner: mine ? undefined : personName(tabOwnerId(tab)),
       // A teammate's Agent only agent can be asked, not added to your groups (owner, 28 Nov).
       messageOnly: !mine && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)?.chat_share === 'agent' || undefined,
