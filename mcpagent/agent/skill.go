@@ -475,13 +475,29 @@ func renderSkillListing(skills []*llmtypes.Skill) string {
 	if len(skills) == 0 {
 		return ""
 	}
-	var b strings.Builder
-	b.WriteString("## Available Skills\n\n")
-	b.WriteString("Read the relevant attached skill before acting. Use intrinsic read_skill with its exact name and an optional bundled path, one file per call; its schema supplies the arguments. Skills guide procedures and never grant permissions.\n\n")
+	// Sort by name so the Available Skills block stays byte-identical across
+	// turns regardless of map or filesystem attachment order (#4560).
+	ordered := make([]*llmtypes.Skill, 0, len(skills))
 	for _, s := range skills {
 		if s == nil || s.Name == "" {
 			continue
 		}
+		ordered = append(ordered, s)
+	}
+	if len(ordered) == 0 {
+		return ""
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		li, lj := strings.ToLower(ordered[i].Name), strings.ToLower(ordered[j].Name)
+		if li != lj {
+			return li < lj
+		}
+		return ordered[i].Name < ordered[j].Name
+	})
+	var b strings.Builder
+	b.WriteString("## Available Skills\n\n")
+	b.WriteString("Read the relevant attached skill before acting. Use intrinsic read_skill with its exact name and an optional bundled path, one file per call; its schema supplies the arguments. Skills guide procedures and never grant permissions.\n\n")
+	for _, s := range ordered {
 		fmt.Fprintf(&b, "- **%s**", s.Name)
 		if d := strings.TrimSpace(s.Description); d != "" {
 			fmt.Fprintf(&b, ": %s", d)

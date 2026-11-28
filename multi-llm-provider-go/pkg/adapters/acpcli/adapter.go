@@ -248,17 +248,26 @@ func launch(ctx context.Context, agent Agent, opts *llmtypes.CallOptions, owner,
 
 // foldMessages returns the chat's instructions and the pending human text.
 func foldMessages(messages []llmtypes.MessageContent, opts *llmtypes.CallOptions) (string, string) {
-	var systems []string
-	if system := strings.TrimSpace(llmtypes.CodingProviderLaunchSystemPromptFromOptions(opts)); system != "" {
-		systems = append(systems, system)
-	}
+	var msgSystems []string
+	seen := map[string]bool{}
 	for _, m := range messages {
 		if m.Role == llmtypes.ChatMessageTypeSystem {
-			if text := strings.TrimSpace(messageText(m)); text != "" {
-				systems = append(systems, text)
+			if text := strings.TrimSpace(messageText(m)); text != "" && !seen[text] {
+				seen[text] = true
+				msgSystems = append(msgSystems, text)
 			}
 		}
 	}
+	// CodingProviderLaunchSystemPromptFromOptions is normally a copy of the
+	// system message already in messages; avoid doubling the prompt (#4560).
+	var systems []string
+	if launchSystem := strings.TrimSpace(llmtypes.CodingProviderLaunchSystemPromptFromOptions(opts)); launchSystem != "" {
+		joinedMsgs := strings.Join(msgSystems, "\n\n")
+		if !seen[launchSystem] && launchSystem != joinedMsgs {
+			systems = append(systems, launchSystem)
+		}
+	}
+	systems = append(systems, msgSystems...)
 	var pending []string
 	for _, m := range llmtypes.PendingHumanMessages(messages) {
 		pending = append(pending, messageText(m))
