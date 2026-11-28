@@ -66,6 +66,8 @@ const chatHelperCacheMaxSessions = 64
 
 type chatHelperRawCacheEntry struct {
 	maxSeq  int64
+	limit   int
+	raws    [][]byte // oldest-first helper event payloads, len <= limit
 	payload []byte
 }
 
@@ -73,6 +75,33 @@ var chatHelperRawCache = struct {
 	sync.Mutex
 	entries map[string]chatHelperRawCacheEntry
 }{entries: make(map[string]chatHelperRawCacheEntry)}
+
+func encodeRawJSONArray(raws [][]byte) []byte {
+	var buf bytes.Buffer
+	buf.WriteByte('[')
+	for i, raw := range raws {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.Write(raw)
+	}
+	buf.WriteByte(']')
+	return buf.Bytes()
+}
+
+func storeChatHelperRawCache(cacheKey string, entry chatHelperRawCacheEntry) {
+	chatHelperRawCache.Lock()
+	if len(chatHelperRawCache.entries) >= chatHelperCacheMaxSessions {
+		if _, exists := chatHelperRawCache.entries[cacheKey]; !exists {
+			for k := range chatHelperRawCache.entries {
+				delete(chatHelperRawCache.entries, k)
+				break
+			}
+		}
+	}
+	chatHelperRawCache.entries[cacheKey] = entry
+	chatHelperRawCache.Unlock()
+}
 
 func (j *SQLiteEventJournal) ChatHelperEventsRaw(ctx context.Context, sessionID string, limit int) ([]byte, int64, error) {
 	if j == nil || j.db == nil || sessionID == "" {
@@ -87,20 +116,80 @@ func (j *SQLiteEventJournal) ChatHelperEventsRaw(ctx context.Context, sessionID 
 	}
 	cacheKey := j.path + "\x00" + sessionID
 	chatHelperRawCache.Lock()
-	if entry, ok := chatHelperRawCache.entries[cacheKey]; ok && entry.maxSeq == maxSeq {
+	entry, hasEntry := chatHelperRawCache.entries[cacheKey]
+	if hasEntry && entry.maxSeq == maxSeq && entry.limit == limit {
 		chatHelperRawCache.Unlock()
 		return entry.payload, maxSeq, nil
 	}
+	canIncremental := hasEntry && entry.limit == limit && maxSeq > entry.maxSeq
+	prevSeq := entry.maxSeq
+	prevRaws := entry.raws
+	prevPayload := entry.payload
 	chatHelperRawCache.Unlock()
+
+	// Incremental scan (#4576): structured_chat_events is append-only per session,
+	// so when maxSeq advances we only scan rows in (prevSeq, maxSeq] instead of
+	// running json_extract over the entire session history again.
+	if canIncremental {
+		rows, err := j.reader().QueryContext(ctx, `SELECT payload FROM (
+  SELECT sequence, payload, json_extract(payload,'$.type') AS type,
+   json_extract(payload,'$.data.data.tool_name') AS tool_name,
+   COALESCE(json_extract(payload,'$.data.data.record.kind'), json_extract(payload,'$.data.record.kind')) AS record_kind
+  FROM structured_chat_events WHERE session_id=? AND sequence>? AND sequence<=?)
+ WHERE (type='coding_agent_native_activity' AND record_kind='helper')
+  OR (type IN ('tool_call_start','tool_call_end','tool_call_error') AND `+chatHelperToolMatch+`)
+ ORDER BY sequence ASC`, sessionID, prevSeq, maxSeq)
+		if err != nil {
+			return nil, 0, err
+		}
+		defer rows.Close()
+		var delta [][]byte
+		for rows.Next() {
+			var payload []byte
+			if err := rows.Scan(&payload); err != nil {
+				return nil, 0, err
+			}
+			if !json.Valid(payload) {
+				continue
+			}
+			delta = append(delta, append([]byte(nil), payload...))
+		}
+		if err := rows.Err(); err != nil {
+			return nil, 0, err
+		}
+		if len(delta) == 0 {
+			storeChatHelperRawCache(cacheKey, chatHelperRawCacheEntry{
+				maxSeq:  maxSeq,
+				limit:   limit,
+				raws:    prevRaws,
+				payload: prevPayload,
+			})
+			return prevPayload, maxSeq, nil
+		}
+		merged := make([][]byte, 0, len(prevRaws)+len(delta))
+		merged = append(merged, prevRaws...)
+		merged = append(merged, delta...)
+		if len(merged) > limit {
+			merged = merged[len(merged)-limit:]
+		}
+		encoded := encodeRawJSONArray(merged)
+		storeChatHelperRawCache(cacheKey, chatHelperRawCacheEntry{
+			maxSeq:  maxSeq,
+			limit:   limit,
+			raws:    merged,
+			payload: encoded,
+		})
+		return encoded, maxSeq, nil
+	}
 
 	rows, err := j.reader().QueryContext(ctx, `SELECT payload FROM (
   SELECT sequence, payload, json_extract(payload,'$.type') AS type,
    json_extract(payload,'$.data.data.tool_name') AS tool_name,
    COALESCE(json_extract(payload,'$.data.data.record.kind'), json_extract(payload,'$.data.record.kind')) AS record_kind
-  FROM structured_chat_events WHERE session_id=?)
+  FROM structured_chat_events WHERE session_id=? AND sequence<=?)
  WHERE (type='coding_agent_native_activity' AND record_kind='helper')
   OR (type IN ('tool_call_start','tool_call_end','tool_call_error') AND `+chatHelperToolMatch+`)
- ORDER BY sequence DESC LIMIT ?`, sessionID, limit)
+ ORDER BY sequence DESC LIMIT ?`, sessionID, maxSeq, limit)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,26 +208,16 @@ func (j *SQLiteEventJournal) ChatHelperEventsRaw(ctx context.Context, sessionID 
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
 	}
-	var buf bytes.Buffer
-	buf.WriteByte('[')
-	for i := len(raws) - 1; i >= 0; i-- {
-		if i < len(raws)-1 {
-			buf.WriteByte(',')
-		}
-		buf.Write(raws[i])
+	for left, right := 0, len(raws)-1; left < right; left, right = left+1, right-1 {
+		raws[left], raws[right] = raws[right], raws[left]
 	}
-	buf.WriteByte(']')
-	encoded := buf.Bytes()
-
-	chatHelperRawCache.Lock()
-	if len(chatHelperRawCache.entries) >= chatHelperCacheMaxSessions {
-		for k := range chatHelperRawCache.entries {
-			delete(chatHelperRawCache.entries, k)
-			break
-		}
-	}
-	chatHelperRawCache.entries[cacheKey] = chatHelperRawCacheEntry{maxSeq: maxSeq, payload: encoded}
-	chatHelperRawCache.Unlock()
+	encoded := encodeRawJSONArray(raws)
+	storeChatHelperRawCache(cacheKey, chatHelperRawCacheEntry{
+		maxSeq:  maxSeq,
+		limit:   limit,
+		raws:    raws,
+		payload: encoded,
+	})
 	return encoded, maxSeq, nil
 }
 
