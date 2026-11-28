@@ -11,17 +11,24 @@ import (
 const (
 	agyGoalProvider    = "agy-cli"
 	claudeGoalProvider = "claude-code"
+	// cursorGoalProvider: Cursor's goal (#4623) runs the same way. Its agent creates the goal with Cursor's own goal
+	// tool and keeps working on it within the turn; Cursor has no pause the SDK can use, so AgentWorks answers show,
+	// pause and clear here too, and the next message after a Stop or Clear asks Cursor to end its goal first.
+	cursorGoalProvider = "cursor-cli"
 )
 
-// turnGoalProvider: a program whose goal runs as one /goal turn, with its state kept here (Antigravity, and Claude
-// Code, whose goal checks continue its turn until the goal is met, #4626).
+// turnGoalProvider: a program whose goal runs as one /goal turn, with its state kept here (Antigravity, Claude
+// Code, whose goal checks continue its turn until the goal is met, #4626, and Cursor, #4623).
 func turnGoalProvider(provider string) bool {
-	return provider == agyGoalProvider || provider == claudeGoalProvider
+	return provider == agyGoalProvider || provider == claudeGoalProvider || provider == cursorGoalProvider
 }
 
 func turnGoalProgram(provider string) string {
-	if provider == claudeGoalProvider {
+	switch provider {
+	case claudeGoalProvider:
 		return "Claude Code"
+	case cursorGoalProvider:
+		return "Cursor"
 	}
 	return "Antigravity"
 }

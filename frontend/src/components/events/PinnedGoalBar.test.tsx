@@ -60,12 +60,12 @@ it('pins the newest goal, shows the blocked reason, sends goal commands and disa
 })
 
 // #4604: Antigravity has no pause or resume. Its bar says Working with Stop while the /goal turn runs, and Stopped
-// with Start again after it; both send the same /goal commands, which the server answers for agy.
-it('shows Stop and Start again for an Antigravity goal', async () => {
+// with Start again after it; both send the same /goal commands, which the server answers for agy. Cursor (#4623) too.
+it.each(['agy-cli', 'cursor-cli'])('shows Stop and Start again for a %s goal', async provider => {
   const send = vi.fn()
   const host = document.createElement('div')
   const root = createRoot(host)
-  const agyGoal = (id: string, status: string) => ({ id, type: 'native_goal_updated', data: { update: { provider: 'agy-cli', native_session_id: 'agy_sess', goal: { objective: 'make the tests pass', status } } } }) as PollingEvent
+  const agyGoal = (id: string, status: string) => ({ id, type: 'native_goal_updated', data: { update: { provider, native_session_id: 'agy_sess', goal: { objective: 'make the tests pass', status } } } }) as PollingEvent
   try {
     await act(async () => root.render(<PinnedGoalBar events={[agyGoal('1', 'active')]} onCommand={send} />))
     expect(host.querySelector('[role="status"]')?.textContent).toBe('Working')

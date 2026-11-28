@@ -82,6 +82,13 @@ func (api *StreamingAPI) prepareNativeGoalQuery(w http.ResponseWriter, r *http.R
 			}
 		}
 	}
+	if !known && provider == cursorGoalProvider {
+		// After a Stop or Clear, Cursor's own goal is still active and would carry on in this message: the turn
+		// asks Cursor to end it first (only while Cursor still has it active).
+		if previous, readErr := api.latestNativeGoal(r.Context(), sessionID); readErr == nil && previous != nil && previous.Provider == cursorGoalProvider && (previous.Goal == nil || previous.Goal.Status == "paused") {
+			r = r.WithContext(llmtypes.WithNativeGoalTurnPause(r.Context(), llmtypes.NativeGoalTurnPause{SessionID: sessionID, Reason: "goal_stopped"}))
+		}
+	}
 	if !known || ((req.IsAutoNotification || req.AgentMessageInbox != "") && !trustedRestore) {
 		return r, false
 	}

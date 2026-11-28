@@ -287,6 +287,27 @@ async function main() {
       })(), new Promise(resolve => { timer = setTimeout(resolve, 3000); })]);
     } catch { return undefined; } finally { clearTimeout(timer); }
   };
+  // Cursor's own goal (#4623): CreateGoal/UpdateGoal keep it on the agent's latest checkpoint (goalState), read
+  // the same way as the context fill. null when the agent has none; undefined when it can't be read within 3 s.
+  const goalState = async () => {
+    if (!store || !agent || typeof createAgentPlatform !== 'function') return undefined;
+    let timer;
+    try {
+      return await Promise.race([(async () => {
+        platform ??= await createAgentPlatform({ workspaceRef: start.cwd, localStore: store });
+        const goal = (await platform.checkpointStore.loadLatest(agent.agentId))?.goalState;
+        if (!goal || typeof goal !== 'object') return null;
+        const ms = Number(goal.activeDurationMs);
+        return { status: String(goal.status ?? ''), objective: typeof goal.objective === 'string' ? goal.objective.slice(0, 4000) : '',
+          duration_ms: Number.isSafeInteger(ms) && ms >= 0 ? ms : undefined };
+      })(), new Promise(resolve => { timer = setTimeout(resolve, 3000); })]);
+    } catch { return undefined; } finally { clearTimeout(timer); }
+  };
+  const goalActive = goal => /^(1|GOAL_STATUS_ACTIVE)$/i.test(goal?.status ?? '');
+  const reportGoal = async done => {
+    const goal = await goalState();
+    emit({ type: 'goal', status: goal === undefined ? 'unknown' : goal?.status ?? '', text: goal?.objective ?? '', duration_ms: goal?.duration_ms, done });
+  };
   // Cancels this agent's runs still marked running; true when there was one. Throws only when a stale
   // run could not be cancelled; if the runs cannot be listed, the agent is kept as before.
   const cancelStale = async agentId => {
@@ -522,6 +543,12 @@ async function main() {
     let text = {text:request.text,image_id:request.image_id}, last;
     const turnMode = sendMode(request.mode, start.mode, sentMode);
     try {
+      // The first message after the person stopped or cleared a goal: Cursor would carry on with its still-ACTIVE
+      // goal, and the SDK has no pause, so the agent is asked to end it first.
+      if (typeof request.goal_end === 'string' && request.goal_end && goalActive(await goalState())) {
+        text = { ...text, text: request.goal_end + text.text };
+        emit({ type: 'goal_ended', action: 'asked' });
+      }
       // A model chosen for this message: same bridge, same native agent; send({ model }) switches it.
       if (request.model && JSON.stringify(request.model) !== requestedModel) {
         const from = start.model.id;
@@ -615,6 +642,7 @@ async function main() {
             if (update.type === 'turn-ended') {
               turnEnded = true;
               emit({ type: 'turn_ended' });
+              if (request.goal_report) reportGoal(false).catch(() => {});
               armQuiet();
             } else if (['step-started', 'user-message-appended', 'text-delta', 'thinking-delta', 'partial-tool-call', 'tool-call-started'].includes(update.type)) {
               turnEnded = false;
@@ -701,6 +729,7 @@ async function main() {
       if (last.status === 'finished') {
         const fill = await contextFill();
         if (fill) emit({ type: 'context', used: fill.used, max: fill.max });
+        if (request.goal_report) await reportGoal(true);
       }
       emit({ type: 'result', status: last.status, result: last.result || '', error: last.error ? short(last.error) : undefined, ...errorInfo(last.error), usage: last.usage });
     } catch (error) {
