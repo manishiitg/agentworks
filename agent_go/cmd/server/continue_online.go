@@ -441,7 +441,7 @@ func (api *StreamingAPI) runContinueOnline(ctx context.Context, userID string, p
 		return nil, fmt.Errorf("pass handoff_note: what the online agent needs to carry on (the task, where it stands, what is next, keys it needs)")
 	}
 	if plan.NewProject {
-		made, err := api.createOnlineProjectFromMac(ctx, userID, plan.macProject, plan.conn, plan.ProjectName, "Carries on work moved from a chat on a Mac.")
+		made, err := api.createOnlineProjectFromMac(ctx, userID, plan.macProject, plan.conn, plan.ProjectName)
 		if err != nil {
 			return nil, fmt.Errorf("the online project could not be made: %v", err)
 		}
