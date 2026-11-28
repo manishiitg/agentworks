@@ -317,7 +317,8 @@ func TestCrewAgentSelfForkSourceAndHiddenBoundary(t *testing.T) {
 	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), hidden, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"}); err == nil || !strings.Contains(err.Error(), "private") {
+	// Refused by the Hidden (Agent only) rule itself: the same line the Team tab shows in place of the chat.
+	if _, err := crewTeamReadChat(otherCtx, "other", address, map[string]any{"query": "source-only"}); err == nil || err.Error() != crewChatPrivateLine("owner") {
 		t.Fatal("a Hidden chat was read", err)
 	}
 	if err = fsutil.WriteJSONAtomic(filepath.Join(teamDir, "team.json"), saved, 0600); err != nil {
