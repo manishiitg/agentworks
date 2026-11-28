@@ -32,7 +32,7 @@ describe('AgentInTeamMark and describeAgentShare', () => {
       expect(host.innerHTML).toBe('')
 
       await act(async () => root.render(<AgentInTeamMark on share={{ inTeam: true, audience: 'whole_team', chatShare: 'live' }} />))
-      expect(host.textContent).toBe('Team')
+      expect(host.querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Full chat: everyone on the Team can ask it and read its chat')
     } finally {
       await act(async () => root.unmount())
     }
