@@ -28,7 +28,6 @@ export interface AgentCardInfo {
   teamShare?: AgentTeamShare
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
-  onSetPurpose?: () => void
   /** Only on your own agents: whether it has its own standing instructions (undefined when not known) and how to edit them. */
   instructions?: { set?: boolean; onEdit: () => void }
   /** A teammate's agent: whose it is (it is shared with the team). */
@@ -160,14 +159,15 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const close = (label: string) => <button type="button" aria-label={label} onClick={() => { dismiss(); trigger.current?.focus() }}
     className="grid h-6 w-6 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring max-md:h-10 max-md:w-10"><X aria-hidden="true" className="h-3.5 w-3.5" /></button>
   const addAutomation = info.onAddAutomation && <button type="button" className="text-primary hover:underline" onClick={() => finish(info.onAddAutomation!)}>✦ Ask this agent to add an automation</button>
-  // Purpose is for the people and agents who can reach this agent, so it shows once the agent is shared (or is a
-  // teammate's). Unshared, Setup is just its own instructions: its AGENTS.md (owner, 28 Nov).
-  const shared = Boolean(info.owner || info.teamShare?.inTeam)
+  // Setup is the agent's own AGENTS.md. Its purpose is for the Team, so it is set in the Team sharing menu (owner,
+  // 28 Nov); a teammate's agent still shows its purpose here, read-only, to say what to ask it.
+  const shared = Boolean(info.owner)
   const instructionsState = info.instructions?.set === undefined ? '' : info.instructions.set ? 'has its own' : 'none yet'
-  const setupValue = shared ? info.purpose || 'Add a purpose' : instructionsState ? `Instructions · ${instructionsState}` : 'Instructions'
+  // The Setup row leads with the agent's own AGENTS.md, shared or not (owner, 28 Nov); its purpose is inside.
+  const setupValue = instructionsState ? `AGENTS.md · ${instructionsState}` : 'AGENTS.md'
   const setupDetails = <>
-      {info.instructions && <div className="flex items-start justify-between gap-3 py-1.5"><span className="min-w-0"><span className="block">Instructions</span><span className="block text-[11px] text-muted-foreground">This agent's own AGENTS.md: standing rules it follows in every chat.</span></span><button type="button" onClick={() => finish(info.instructions!.onEdit)} className="shrink-0 text-primary hover:underline">{info.instructions.set === false ? 'Set up' : 'Edit'}</button></div>}
-      {shared && <div className={`flex min-w-0 items-start gap-2 py-1.5 ${info.instructions ? 'border-t border-border' : ''}`}><span className="min-w-0 flex-1"><span className="block">Purpose <span className="text-[11px] text-muted-foreground">for your Team</span></span><span className="block truncate text-muted-foreground" title={info.purpose}>{info.purpose || 'Add a purpose'}</span>{!info.owner && <span className="block text-[11px] text-muted-foreground">Teammates and their agents read this to decide what to ask it.</span>}</span>{info.onSetPurpose && <button type="button" onClick={() => finish(info.onSetPurpose!)} className="shrink-0 text-primary hover:underline">{info.purpose ? 'Edit' : 'Set up'}</button>}</div>}
+      {info.instructions && <div className="flex items-start justify-between gap-3 py-1.5"><span className="min-w-0"><span className="block">AGENTS.md</span><span className="block text-[11px] text-muted-foreground">This agent's own instructions: standing rules it follows in every chat.</span></span><button type="button" onClick={() => finish(info.instructions!.onEdit)} className="shrink-0 text-primary hover:underline">{info.instructions.set === false ? 'Set up' : 'Edit'}</button></div>}
+      {shared && <div className={`flex min-w-0 items-start gap-2 py-1.5 ${info.instructions ? 'border-t border-border' : ''}`}><span className="min-w-0 flex-1"><span className="block">Purpose <span className="text-[11px] text-muted-foreground">for your Team</span></span><span className="block truncate text-muted-foreground" title={info.purpose}>{info.purpose || 'Add a purpose'}</span></span></div>}
       {shared && !!info.examples?.length && <p className="mb-2 text-muted-foreground">Ask me to: {info.examples.join(' · ')}</p>}
   </>
   return <>

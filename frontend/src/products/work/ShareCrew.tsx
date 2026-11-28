@@ -8,7 +8,7 @@ import { Switch } from '../../components/ui/Switch'
 import { Button } from '../../components/ui/Button'
 import ModalPortal from '../../components/ui/ModalPortal'
 import { useChatStore } from '../../stores/useChatStore'
-import { fillMainDraft, fillOwnTabDraft } from '../../utils/agentPurposeDraft'
+import { fillMainDraft, fillOwnTabDraft, setUpAgentPurpose } from '../../utils/agentPurposeDraft'
 import { teamAgentChatTab } from './AgentSharingRow'
 import { openTeammateAgent } from './openTeammateAgent'
 import { AgentDetails, Saving, TeamTab, teamSettlingServer, type TeamGoOnline } from './TeamTab'
@@ -147,6 +147,11 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
   const members = (agent.members || view?.people || []).filter(person => !person.you && person.note !== 'you' && person.note !== 'invited')
   const picked = (row?.chosen_people || []).map(person => person.user_id)
   const togglePerson = (id: string) => void rule('who', { audience: 'chosen', chosen_people: picked.includes(id) ? picked.filter(item => item !== id) : [...picked, id] })
+  // Purpose lives here, with the Team (owner, 28 Nov): the agent proposes it in its own chat, as in Setup before.
+  const setPurpose=()=>{
+   const tab=teamAgentChatTab(team,projectId,agent.key)
+   if(tab)setUpAgentPurpose(tab.tabId);else useChatStore.getState().addToast(`Open ${agent.name}'s own chat to set its purpose.`,'info')
+  }
   const explain=()=>{
    const tab=teamAgentChatTab(team,projectId,agent.key)
    if(!tab||!ask?.setup_ask||!fillOwnTabDraft(tab.tabId,ask.setup_ask))useChatStore.getState().addToast(`Open ${agent.name}'s own chat to explain these settings.`,'info')
@@ -171,6 +176,9 @@ export function ShareAgentCard({ agent, target, projectId, compact = false, defa
     {ask && (ask.note || (!ask.can_change && ask.fixed)) && <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{ask.note || ask.fixed}</p>}
     {ask?.can_edit && <div className={ask.on ? '' : 'pointer-events-none opacity-40'} aria-disabled={!ask.on || undefined}>
       <div className={"mt-2 min-w-0 divide-y divide-border/50"}>
+        {row && <section aria-label="Purpose" className="min-w-0 space-y-0.5 py-2"><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Purpose</span><span className="min-w-0 flex-1 truncate text-right" title={row.purpose}>{row.purpose || 'None yet'}</span><button type="button" disabled={busy} className="text-primary hover:underline" onClick={setPurpose}>{row.purpose ? 'Edit' : 'Set up'}</button></div>
+          <p className="text-[11px] text-muted-foreground">Teammates and their agents read this to decide what to ask it.</p>
+        </section>}
         {row && <section aria-label="Teammate instructions" className={"min-w-0 space-y-1 py-2"}><div className="flex min-w-0 items-center gap-3"><span className="max-w-[45%] shrink-0 text-xs text-muted-foreground">Your instructions for teammates</span><span className="min-w-0 flex-1 truncate text-right" title={row.when_others_ask}>{row.when_others_ask || 'None'}</span><button type="button" disabled={busy || !ask.on} aria-expanded={noteOpen} className="text-primary hover:underline" onClick={() => { setNote(row.when_others_ask || ''); setNoteOpen(!noteOpen) }}>Edit</button></div>
           {noteOpen && <div><textarea aria-label="Your instructions for teammates" placeholder='e.g. "Project questions only; explain the risks before making changes."' disabled={busy || !ask.on} value={note} maxLength={1000} onChange={event => setNote(event.target.value)} className="w-full rounded border border-border bg-background p-2" /><button type="button" disabled={busy || !ask.on} className="text-primary hover:underline" onClick={() => void rule('note', { when_others_ask: note }).then(saved => { if (saved) setNoteOpen(false) })}>Save note</button></div>}
         </section>}

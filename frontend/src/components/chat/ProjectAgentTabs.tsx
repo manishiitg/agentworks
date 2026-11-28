@@ -301,9 +301,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         sharedChosen: share?.chosen,
         teamShare: team?.team.on ? agentTeamShareFromRow(teamRow) : undefined,
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
-        onSetPurpose: () => setUpAgentPurpose(tab.tabId),
-        // With the Team on, Team sharing decides who reaches the agent, so this row goes (owner, 28 Nov).
-        messageLine: team?.team.on ? undefined : `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
+        // Your own agents message it with this line, Team on or not (owner, 28 Nov: the menu must say how agents message it).
+        messageLine: `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
         instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => setUpAgentInstructions(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,

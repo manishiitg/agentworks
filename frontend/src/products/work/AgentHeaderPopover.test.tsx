@@ -75,13 +75,14 @@ it('uses the same admitted agent-rule payloads in the header and right panel', a
 
 it('shows compact metadata and opens automation details without sending a turn', async () => {
  const host=document.createElement('div');document.body.append(host);const root=createRoot(host)
- const purpose=vi.fn(), add=vi.fn()
+ const add=vi.fn()
  try {
-  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',teamShare:{inTeam:true},examples:['Review a layout','Check keyboard access','Find a regression'],onSetPurpose:purpose,onAddAutomation:add,setup:{reach:'',starts_on_own:true,when_offline:{line:"When your Mac is off, teammates' agents read this chat's copy (synced 2 min ago)."},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
+  await act(async () => root.render(<AgentHoverCard clickToOpen info={{name:'Reviewer',purpose:'Checks the UI.',examples:['Review a layout','Check keyboard access','Find a regression'],onAddAutomation:add,setup:{reach:'',starts_on_own:true,when_offline:{line:"When your Mac is off, teammates' agents read this chat's copy (synced 2 min ago)."},next_automation:'Morning check in 1 h',automations:[{name:'Morning check',kind:'Schedule',line:'next in 1 h',on:true}]}}}><button>Agent details</button></AgentHoverCard>))
   await act(async () => host.querySelector('button')!.click())
   const dialog=document.querySelector('[role="dialog"]')!
   expect(dialog.textContent).not.toMatch(/Coding agent|Not available yet/)
-  expect(dialog.textContent).toContain('Ask me to: Review a layout · Check keyboard access · Find a regression')
+  // Purpose and its examples are set in the Team sharing menu, not in an own agent's Setup (owner, 28 Nov).
+  expect(dialog.textContent).not.toContain('Ask me to:')
   expect(dialog.textContent).toContain("When your Mac is off, teammates' agents read this chat's copy")
   expect(dialog.textContent).not.toMatch(/Publish|Run online/)
   const controls = [...dialog.querySelectorAll('button[aria-controls]')]
