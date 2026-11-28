@@ -339,10 +339,12 @@ func vaultAccessFor(ctx context.Context, person string) (vaultAccessInventory, e
 	}
 	for i := range out.Servers {
 		out.Servers[i].Name = vaultServerName(out.Servers[i].ID)
+		rememberVaultConnectionProvider(out.Servers[i].ID, out.Servers[i].Provider)
 	}
 	for i := range out.Groups {
 		for j := range out.Groups[i].Servers {
 			out.Groups[i].Servers[j].Name = vaultServerName(out.Groups[i].Servers[j].ID)
+			rememberVaultConnectionProvider(out.Groups[i].Servers[j].ID, out.Groups[i].Servers[j].Provider)
 		}
 	}
 	return out, nil
@@ -394,17 +396,44 @@ func (api *StreamingAPI) handleMyVaultServers(w http.ResponseWriter, r *http.Req
 			}
 		}
 	}
+	isAdmin := vaultAdminActive(actor)
+	canManageRole := activeMCPPerson(actor) && workflowAccessForClaims(&UserClaims{UserID: actor}) != WorkflowAccessRead
+	ownedConnections := map[string]bool{}
+	var actorVaults personalVaultList
+	var actorVaultsErr error
+	haveActorVaults := false
+	if !isAdmin && canManageRole && (len(access.Servers) > 0 || actor == owner) {
+		actorVaults, actorVaultsErr = allVaultsForPerson(r.Context(), actor)
+		haveActorVaults = true
+		if actorVaultsErr == nil {
+			for _, v := range actorVaults.Vaults {
+				if v.Role != "owner" {
+					continue
+				}
+				for _, c := range v.Connections {
+					ownedConnections[c.ID] = true
+				}
+			}
+		}
+	}
 	for _, s := range access.Servers {
 		if seen[s.ID] || actor != owner && len(picks) > 0 && !picks[vaultServerName(s.ID)] {
 			continue
 		}
-		rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": s.Tools, "status": "active", "can_manage": api.vaultActorCanManage(r.Context(), actor, s.ID)})
+		rows = append(rows, map[string]any{"id": s.ID, "label": s.Label, "provider": s.Provider, "tools": s.Tools, "status": "active", "can_manage": isAdmin || (canManageRole && ownedConnections[s.ID])})
 		seen[s.ID] = true
 	}
 
-	if own, e := personalVaults(r.Context(), owner); e == nil {
+	var own personalVaultList
+	var ownErr error
+	if haveActorVaults && actor == owner {
+		own, ownErr = actorVaults, actorVaultsErr
+	} else {
+		own, ownErr = personalVaults(r.Context(), owner)
+	}
+	if ownErr == nil {
 		for _, v := range own.Vaults {
-			if v.Role != "owner" {
+			if v.Role != "owner" || isCrewVaultGroup(v.Group.ProjectRoot) {
 				continue
 			}
 			for _, s := range v.Connections {
@@ -487,6 +516,14 @@ func verifyVaultDelegation(secret, token string) (vaultDelegation, error) {
 	}
 	return out, nil
 }
+
+// vaultDelegationExpiry aligns expiry to the hour so vaultRuntimeName keeps a
+// stable pool key within each hour while guaranteeing at least minTTL remaining
+// even when minted near the top of the hour (:59:59).
+func vaultDelegationExpiry(now time.Time, minTTL time.Duration) int64 {
+	return now.Truncate(time.Hour).Add(minTTL + time.Hour).Unix()
+}
+
 func (api *StreamingAPI) vaultServerConfig(person, connector string) (mcpclient.MCPServerConfig, error) {
 	_, secret, err := gatewayAdminServiceConfig()
 	if err != nil {
@@ -494,7 +531,7 @@ func (api *StreamingAPI) vaultServerConfig(person, connector string) (mcpclient.
 	}
 	// Credential permits only this user's existing permissions for this connector.
 	// The gateway service secret and upstream token never reach the agent.
-	token := signVaultDelegation(secret, vaultDelegation{Person: person, Connector: connector, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})
+	token := signVaultDelegation(secret, vaultDelegation{Person: person, Connector: connector, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})
 	// The MCP SDK connects from this Go process, not the workspace container.
 	// Shell-facing host.docker.internal URLs cannot be used for this connection.
 	return mcpclient.MCPServerConfig{URL: api.GetAPIURL() + "/internal/vault/mcp", Protocol: mcpclient.ProtocolHTTP, Headers: map[string]string{"Authorization": "Bearer " + token}}, nil
@@ -625,7 +662,7 @@ func (api *StreamingAPI) resolveGovernedMCP(ctx context.Context, person, server 
 		if err != nil {
 			return nil, err
 		}
-		cfg.Headers["Authorization"] = "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: person, Connector: v.ID, Session: authority.Session, Purpose: "vault-builder", Expires: time.Now().Truncate(time.Hour).Add(time.Hour).Unix()})
+		cfg.Headers["Authorization"] = "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: person, Connector: v.ID, Session: authority.Session, Purpose: "vault-builder", Expires: vaultDelegationExpiry(time.Now(), time.Hour)})
 	}
 	name := vaultRuntimeName(vaultServerName(v.ID), cfg)
 	return &executor.ResolvedMCPServer{Name: name, Config: cfg, ConnectionSessionID: name}, nil
@@ -789,7 +826,7 @@ func (api *StreamingAPI) scopeAgentMCP(ctx context.Context, sessionID string, na
 				log.Printf("[MCP_SCOPE] event=selected_server_skipped server=%s lender=%s session=%s error=%q", name, lender, sessionID, secretErr.Error())
 				continue
 			}
-			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: time.Now().Truncate(time.Hour).Add(24 * time.Hour).Unix()})}
+			cfg.Headers = map[string]string{"Authorization": "Bearer " + signVaultDelegation(secret, vaultDelegation{Person: lender, Connector: strings.TrimPrefix(vaultSelectionName(resolved.Name), "vault_"), Session: sessionID, Expires: vaultDelegationExpiry(time.Now(), 23*time.Hour)})}
 		}
 		runtimeName := resolved.Name
 		if governedVaultName(runtimeName) {

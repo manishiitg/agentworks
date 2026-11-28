@@ -152,10 +152,11 @@ func (api *StreamingAPI) mcpConnectionTool(ctx context.Context, person, operatio
 				permitted = true
 			}
 		}
-		if !permitted && !api.vaultActorCanManage(ctx, person, id) {
+		canManage := api.vaultActorCanManage(ctx, person, id)
+		if !permitted && !canManage {
 			return "", fmt.Errorf("this connection is not available to your account")
 		}
-		if api.vaultActorCanManage(ctx, person, id) {
+		if canManage {
 			var syncErr error
 			if vaultID == "" {
 				_, syncErr = vaultServiceRequest(ctx, person, http.MethodPost, "/api/admin/connectors/"+id+"/sync", nil)

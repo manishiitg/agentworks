@@ -267,7 +267,11 @@ func (api *StreamingAPI) projectVaultInventory(ctx context.Context, person, work
 	}
 	// Company and other shared grants are included even when they are not
 	// person-owned vaults. Runtime metadata contains no credential values.
-	if access, e := vaultAccessFor(ctx, person); e == nil {
+	access, accessErr := lenderAccess, lenderErr
+	if lender != person {
+		access, accessErr = vaultAccessFor(ctx, person)
+	}
+	if accessErr == nil {
 		for _, row := range access.Groups {
 			if row.ProjectRoot != "" {
 				continue

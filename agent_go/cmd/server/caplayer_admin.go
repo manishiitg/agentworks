@@ -202,7 +202,17 @@ func gatewayAdminServiceConfig() (*url.URL, string, error) {
 	return target, secret, nil
 }
 
-var capLayerTransport = &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 90 * time.Second}
+var capLayerTransport = &http.Transport{
+	Proxy:                 http.ProxyFromEnvironment,
+	DialContext:           (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+	ForceAttemptHTTP2:     true,
+	MaxIdleConns:          64,
+	MaxIdleConnsPerHost:   64,
+	IdleConnTimeout:       90 * time.Second,
+	TLSHandshakeTimeout:   5 * time.Second,
+	ExpectContinueTimeout: 1 * time.Second,
+	ResponseHeaderTimeout: 90 * time.Second,
+}
 
 // capLayerAgentAccess does not trust the model, a browser role, or a stale
 // session. Administrator access is checked on every individual tool call.
