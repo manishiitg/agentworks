@@ -1,4 +1,4 @@
-import { MessageSquareLock, UserCheck, UserLock, Users } from 'lucide-react'
+import { Lock, MessageSquareLock, UserCheck, UserLock, Users } from 'lucide-react'
 
 /** Server-backed Team sharing state for one of the viewer's own agents (display only, never an access gate). */
 export interface AgentTeamShare {
@@ -12,7 +12,7 @@ export interface AgentShareDisplay {
   headerLabel: string
   shortLabel: string
   tooltip: string
-  tone: 'team-visible' | 'team-hidden' | 'chosen'
+  tone: 'team-visible' | 'team-hidden' | 'chosen' | 'only-me'
   chosen: boolean
   hidden: boolean
 }
@@ -84,9 +84,21 @@ export function describeAgentShare(share?: AgentTeamShare): AgentShareDisplay | 
   }
 }
 
+/** An own agent kept to Only me in a project whose Team is on: the header still shows its sharing button (owner,
+ *  28 Nov: "show only me when its on team"); the left menu stays clean. */
+export const onlyMeShare: AgentShareDisplay = {
+  headerLabel: 'Only me',
+  shortLabel: 'Only me',
+  tooltip: 'Only me: not shared with the Team',
+  tone: 'only-me',
+  chosen: false,
+  hidden: true,
+}
+
 /** Single crisp icon per sharing state: Users (team visible), MessageSquareLock (team hidden),
  * UserCheck (chosen visible), UserLock (chosen hidden). */
 export function AgentShareIcon({ info, className = 'h-3.5 w-3.5 shrink-0' }: { info: AgentShareDisplay; className?: string }) {
+  if (info.tone === 'only-me') return <Lock aria-hidden="true" className={className} />
   if (info.chosen) {
     return info.hidden
       ? <UserLock aria-hidden="true" className={className} />

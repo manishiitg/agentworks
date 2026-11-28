@@ -5,7 +5,7 @@ import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud,
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
-import { AgentShareIcon, describeAgentShare, type AgentTeamShare } from './AgentInTeamMark'
+import { AgentShareIcon, describeAgentShare, onlyMeShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
 import { BotCard } from '../../products/work/bots/BotCard'
 import { AgentMessageFrom, CodingAppIcons } from './AgentMessageFrom'
@@ -27,6 +27,8 @@ export interface AgentCardInfo {
   sharedChosen?: boolean
   /** Structured Team sharing state for the header pill (only present when shared with the Team). */
   teamShare?: AgentTeamShare
+  /** Your own agent kept to Only me while the project's Team is on: the header shows a lock to share it. */
+  onlyMe?: boolean
   lastAsked?: { who: string; when: string; active: boolean; open: () => void }
   /** Only on your own agents; a teammate's agent is theirs to change. */
   /** Only on your own agents: whether it has its own standing instructions (undefined when not known) and how to edit them. */
@@ -150,7 +152,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const content = typeof children === 'function' ? children(at?.view === 'details') : children
   if (!info) return <>{content}</>
   const enabled = enabledAgentAutomations(info.setup)
-  const shareInfo = shareShortcut && !info.owner ? describeAgentShare(info.teamShare) : null
+  const shareInfo = shareShortcut && !info.owner ? describeAgentShare(info.teamShare) ?? (info.onlyMe ? onlyMeShare : null) : null
   const open = (view: 'details' | 'automations' | 'sharing' = 'details') => {
     const rect = anchor.current?.getBoundingClientRect()
     if (!rect) return
