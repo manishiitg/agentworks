@@ -1962,16 +1962,20 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	if goalHandled {
 		return
 	}
+	acceptStageStart := time.Now()
 	var planHandled bool
 	if r, planHandled = api.prepareNativePlanQuery(w, r, &req, sessionID, turnProvider); planHandled {
 		return
 	}
+	planMS := time.Since(acceptStageStart).Milliseconds()
+	skillStart := time.Now()
 	if next, err := api.prepareRequestedSkill(r, &req, sessionID, turnProvider); err != nil {
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	} else {
 		r = next
 	}
+	skillMS := time.Since(skillStart).Milliseconds()
 	if !otherRoleTurn {
 		common.SetSessionWorkflowReadOnly(sessionID, currentUserIsReadOnly)
 		common.SetSessionCrewReader(sessionID, currentUserIsReadOnly && resolvedProfile != nil && isProjectProfileID(resolvedProfile.Definition.ID))
@@ -1979,6 +1983,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		common.SetSessionReadOnlyAccess(sessionID, access == WorkflowAccessRead)
 	}
 	normalizeWorkflowConversationMode(&req, currentUserIsReadOnly)
+	persistStart := time.Now()
 	if api.eventStore != nil {
 		class := sessionPersistenceClassForRequest(req)
 		if err := api.eventStore.SetSessionPersistenceClass(sessionID, class); err != nil {
@@ -1987,6 +1992,7 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	persistMS := time.Since(persistStart).Milliseconds()
 
 	api.conversationMux.Lock()
 	if api.lastAgentProfileKeyBySession == nil {
@@ -2010,16 +2016,19 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+	secretsStart := time.Now()
 	if err := api.validateQuerySecretSelection(r.Context(), currentUserID, req); err != nil {
 		logQueryAdmissionRefusal(w, r, "secret_selection")
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
+	secretsMS := time.Since(secretsStart).Milliseconds()
 	// Browser names supplied by an agent (including the conventional "default")
 	// are public aliases. Bind them to the durable conversation workspace:
 	// workflows share one browser across their authorized users, while Crew
 	// projects retain one browser per authenticated owner and project. Other
 	// product chats keep the existing user boundary; guests remain chat-scoped.
+	browserStart := time.Now()
 	selected := strings.Trim(strings.TrimSpace(req.SelectedFolder), "/")
 	if selected == "" && strings.TrimSpace(req.PresetQueryID) != "" {
 		if resolved, resolveErr := api.resolveWorkspacePathFromPreset(r.Context(), req.PresetQueryID); resolveErr == nil {
@@ -2028,6 +2037,10 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 	}
 	bindConversationBrowserIsolation(sessionID, currentUserID, selected, resolvedProfile)
 	common.SetSessionBrowserMode(sessionID, getBrowserMode(req))
+	if acceptTotalMS := time.Since(acceptStageStart).Milliseconds(); acceptTotalMS >= 300 {
+		logfWithContext(queryLogCtx, "[QUERY_ACCEPT_SLOW] session=%s total_ms=%d plan_ms=%d skill_ms=%d persist_ms=%d secrets_ms=%d browser_ms=%d",
+			sessionID, acceptTotalMS, planMS, skillMS, persistMS, secretsMS, time.Since(browserStart).Milliseconds())
+	}
 	// Keep configured browser intent on the request. In auto mode,
 	// agent_browser queries current CDP reachability at tool-call time.
 
