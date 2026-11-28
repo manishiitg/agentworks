@@ -16,6 +16,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 )
 
@@ -99,7 +100,7 @@ type session struct {
 	modes         []string // the agent's session modes (session/set_mode), when it offers them
 	mode          string   // the session's current mode
 	status        *llmtypes.StatusLine
-	preamble      string // instructions sent ahead of the first prompt
+	instructions  instructions.Tracker
 	fingerprint   string
 	parts         map[string][32]byte
 	listener      chan message

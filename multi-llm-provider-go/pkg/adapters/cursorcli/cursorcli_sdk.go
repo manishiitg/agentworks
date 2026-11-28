@@ -25,6 +25,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/internal/clisandbox"
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/procshutdown"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
@@ -183,11 +184,12 @@ type cursorSDKSession struct {
 	// Context fill Cursor last reported for this agent: tokens used of the window (0 = unknown).
 	contextUsed, contextWindow int
 	// parts names which launch setting changed when the process is replaced (#2886).
-	parts      map[string][32]byte
-	idle       *time.Timer
-	hasHistory bool
-	running    bool
-	prompted   bool // the bridge has this turn's prompt: a steer handed over now cannot be lost to a failed launch
+	parts        map[string][32]byte
+	instructions instructions.Tracker
+	idle         *time.Timer
+	hasHistory   bool
+	running      bool
+	prompted     bool // the bridge has this turn's prompt: a steer handed over now cannot be lost to a failed launch
 }
 
 var cursorSDKSharedStoreStart sync.Mutex
@@ -696,10 +698,11 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	}
 	// agentworks#3135: the model is not a launch setting. A changed model keeps this chat's bridge and native
 	// agent; the next message is sent with it (SDK send({ model })).
-	config := map[string]any{"cwd": cwd, "runtime": opts.CLIRuntimeDir, "system": system, "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCursorStructuredEnv(c.apiKey), opts), "security": opts.CLISecurity, "skills": llmtypes.AttachedSkillsFromOptions(opts)}
+	// Instruction changes go in the turn message via instructions.Tracker instead of restarting (#4560).
+	config := map[string]any{"cwd": cwd, "runtime": opts.CLIRuntimeDir, "instructions_empty": strings.TrimSpace(system) == "", "env": llmtypes.MergeCodingAgentSecretEnvironment(buildCursorStructuredEnv(c.apiKey), opts), "security": opts.CLISecurity}
 	if opts.Metadata != nil {
 		for k, v := range opts.Metadata.Custom {
-			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != MetadataKeyCursorModel && k != llmtypes.CodingProviderIdleCompactMetadataKey {
+			if k != MetadataKeyResumeSessionID && k != llmtypes.CodingProviderLaunchOnlyMetadataKey && k != MetadataKeyCursorModel && k != llmtypes.CodingProviderIdleCompactMetadataKey && k != llmtypes.CodingProviderLaunchSystemPromptMetadataKey && k != llmtypes.AttachedSkillsMetadataKey {
 				config[k] = v
 			}
 		}
@@ -792,6 +795,7 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		s.proc, s.agentID, s.cwd, s.model, s.fingerprint, s.hasHistory, s.parts = p, agentID, cwd, model, fingerprint, hasHistory, parts
 		s.account, s.contextUsed, s.contextWindow = c.cursorAccountKey(opts), 0, 0
 		s.mu.Unlock()
+		s.instructions.Started(system)
 		p.process.Launched(c.logger, launchReason)
 		if requested != "" && !resumed && c.logger != nil {
 			c.logger.Infof("[CURSOR_SDK] resume_missing fallback=new chat=%q requested=%q new=%q", owner, requested, agentID)
@@ -809,7 +813,11 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 		if !hasHistory {
 			return llmtypes.IdleCompactSkipResponse("cursor-cli", llmtypes.IdleCompactReasonNothing), nil
 		}
-		return c.compactSDK(ctx, s, p, emit)
+		resp, compactErr := c.compactSDK(ctx, s, p, emit)
+		if compactErr == nil {
+			s.instructions.Compacted()
+		}
+		return resp, compactErr
 	}
 	// The model chosen for this message, when it differs from the one the bridge runs.
 	var switchModel map[string]any
@@ -829,8 +837,11 @@ func (c *CursorCLIAdapter) generateContentSDK(ctx context.Context, messages []ll
 	if strings.TrimSpace(prompt) == "" && len(llmtypes.NativeImageInputsForSession(ctx, owner)) == 0 {
 		return nil, fmt.Errorf("Cursor prompt is empty")
 	}
+	delivery, deliveredInstructions := s.instructions.Next(system)
+	prompt = instructions.InMessage(delivery, prompt)
 	response, err = c.consumeSDKTurn(ctx, s, p, prompt, switchModel, model, emit, owner)
 	if err == nil {
+		deliveredInstructions()
 		s.mu.Lock()
 		s.hasHistory = true
 		s.mu.Unlock()

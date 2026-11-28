@@ -26,13 +26,17 @@ var claudeNativeQuestionHook string
 // tool is registered for the turn but no longer offered in the model's tool list.
 func (a *Agent) claudeNativeQuestionsEnabled() bool {
 	contract, _ := llm.GetCodingAgentProviderContractForTransport(llm.ProviderClaudeCode, a.modelID, a.claudeCodeTransport)
-	if !a.userAnswersNativeQuestions || a.wantsStructuredTransport() {
+	if a.wantsStructuredTransport() {
 		return false
 	}
+	// The SDK answers AskUserQuestion and ExitPlanMode on the turn's own question
+	// handler (and denies immediately when unattended), so offer them on every
+	// non-structured SDK turn to keep --tools, --allowedTools and hook settings
+	// identical across attended and unattended turns (#4560).
 	if string(contract.Transport) == "sdk" {
 		return true
 	}
-	if !a.claudeCodePersistentInteractiveSession {
+	if !a.userAnswersNativeQuestions || !a.claudeCodePersistentInteractiveSession {
 		return false
 	}
 	_, registered := a.lookupDirectTool("request_clarification")

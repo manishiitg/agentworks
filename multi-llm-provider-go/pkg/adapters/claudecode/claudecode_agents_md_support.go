@@ -38,20 +38,50 @@ var claudeBinaryVersion = func() (string, error) {
 	return path + " " + strings.TrimSpace(string(out)), nil
 }
 
-var claudeAgentsMDSupport sync.Map // "path version" -> bool
+var (
+	claudeAgentsMDSupport     sync.Map // "path version" -> bool
+	claudeAgentsMDLastKnownMu sync.Mutex
+	claudeAgentsMDLastKnown   bool
+	claudeAgentsMDHasKnown    bool
+)
 
-// claudeReadsAgentsMD reports whether the claude binary on PATH is new enough to
-// read AGENTS.md. The answer is cached per binary and version.
-func claudeReadsAgentsMD() bool {
+// claudeReadsAgentsMDChecked reports whether the claude binary on PATH is new
+// enough to read AGENTS.md, returning an error when the version probe itself
+// failed so callers can keep a previously verified answer (#4560).
+func claudeReadsAgentsMDChecked() (bool, error) {
 	identity, err := claudeBinaryVersion()
 	if err != nil {
-		return false
+		return false, err
 	}
 	if cached, ok := claudeAgentsMDSupport.Load(identity); ok {
-		return cached.(bool)
+		supported := cached.(bool)
+		claudeAgentsMDLastKnownMu.Lock()
+		claudeAgentsMDLastKnown, claudeAgentsMDHasKnown = supported, true
+		claudeAgentsMDLastKnownMu.Unlock()
+		return supported, nil
 	}
 	supported := claudeVersionAtLeast(identity, claudeMinAgentsMDVersion)
 	claudeAgentsMDSupport.Store(identity, supported)
+	claudeAgentsMDLastKnownMu.Lock()
+	claudeAgentsMDLastKnown, claudeAgentsMDHasKnown = supported, true
+	claudeAgentsMDLastKnownMu.Unlock()
+	return supported, nil
+}
+
+// claudeReadsAgentsMD reports whether the claude binary on PATH is new enough to
+// read AGENTS.md. The answer is cached per binary and version; a transient probe
+// error keeps the last known good answer instead of flipping to false (#4560).
+func claudeReadsAgentsMD() bool {
+	supported, err := claudeReadsAgentsMDChecked()
+	if err != nil {
+		claudeAgentsMDLastKnownMu.Lock()
+		known, prev := claudeAgentsMDHasKnown, claudeAgentsMDLastKnown
+		claudeAgentsMDLastKnownMu.Unlock()
+		if known {
+			return prev
+		}
+		return false
+	}
 	return supported
 }
 

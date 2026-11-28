@@ -31,7 +31,16 @@ func ReadsAgentsMD() bool {
 	if !readsAgentsMDCache.at.IsZero() && time.Since(readsAgentsMDCache.at) < 10*time.Minute {
 		return readsAgentsMDCache.ok
 	}
-	readsAgentsMDCache.ok = claudeReadsAgentsMD()
-	readsAgentsMDCache.at = time.Now()
-	return readsAgentsMDCache.ok
+	supported, err := claudeReadsAgentsMDChecked()
+	if err != nil && !readsAgentsMDCache.at.IsZero() {
+		// Transient probe failure: keep the last verified answer so the system
+		// prompt does not suddenly re-inject AGENTS.md and bust the cache (#4560).
+		return readsAgentsMDCache.ok
+	}
+	if err == nil {
+		readsAgentsMDCache.ok = supported
+		readsAgentsMDCache.at = time.Now()
+		return readsAgentsMDCache.ok
+	}
+	return false
 }

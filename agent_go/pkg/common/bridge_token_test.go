@@ -73,3 +73,36 @@ func TestPopulateMCPBridgeShortEnvUsesTheSessionsToken(t *testing.T) {
 		t.Fatalf("env must carry the session token, got %q / %q", env["MCP_API_TOKEN"], env["MCP_AUTH"])
 	}
 }
+
+// #4560: BridgeTokenForSession used to change every UTC hour, mutating mcp_config
+// and killing every warm coding CLI on the hour.
+func TestBridgeTokenStaysStableAcrossHourBoundary(t *testing.T) {
+	SetBridgeTokenSecret("server-secret")
+	origNow := bridgeTokenNow
+	t.Cleanup(func() {
+		bridgeTokenNow = origNow
+		SetBridgeTokenSecret("")
+	})
+
+	now := time.Date(2026, 11, 28, 6, 59, 0, 0, time.UTC)
+	bridgeTokenNow = func() time.Time { return now }
+
+	first := BridgeTokenForSession("chat-warm")
+	now = now.Add(2 * time.Hour)
+	second := BridgeTokenForSession("chat-warm")
+	if first != second {
+		t.Fatalf("token changed across hour boundary: %q != %q", first, second)
+	}
+	if sid, ok := VerifyBridgeToken(second); !ok || sid != "chat-warm" {
+		t.Fatalf("pinned token must still verify, got %q %v", sid, ok)
+	}
+
+	now = now.Add(bridgeTokenLifetime/2 + time.Hour)
+	refreshed := BridgeTokenForSession("chat-warm")
+	if refreshed == first {
+		t.Fatalf("token must refresh after half its lifetime")
+	}
+	if sid, ok := VerifyBridgeToken(refreshed); !ok || sid != "chat-warm" {
+		t.Fatalf("refreshed token must verify, got %q %v", sid, ok)
+	}
+}

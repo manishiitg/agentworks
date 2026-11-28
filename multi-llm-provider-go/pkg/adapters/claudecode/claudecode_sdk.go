@@ -196,7 +196,7 @@ func claudeSDKPermission(ctx context.Context, tool string, input json.RawMessage
 		}
 		answers, err := nativeinput.Ask(ctx, questions)
 		if err != nil {
-			return deny
+			return map[string]any{"behavior": "deny", "message": "No person is attending this turn to answer an interactive question card. Proceed with your best judgment or ask in your reply."}
 		}
 		mapped := map[string]string{}
 		for i, a := range answers {

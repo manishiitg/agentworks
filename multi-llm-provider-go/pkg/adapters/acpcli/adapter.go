@@ -8,6 +8,7 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/internal/instructions"
 )
 
 // Adapter runs chat turns on an ACP agent. The model id names the agent.
@@ -115,8 +116,11 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 	system, prompt := foldMessages(messages, opts)
 	mcpJSON := stringMetadata(opts, MetadataKeyMCPConfig)
 	resume := stringMetadata(opts, MetadataKeyResumeSessionID)
-	config := map[string]any{"agent": agent.ID, "working_dir": workdir, "mcp_config": mcpJSON, "native_tools_mode": mode, "instructions": system}
-	fingerprint := strings.Join([]string{agent.ID, workdir, mcpJSON, mode, system}, "\x00")
+	instructionsEmpty := strings.TrimSpace(system) == ""
+	// Instruction changes are delivered in the turn message via instructions.Tracker
+	// instead of restarting the ACP process and wiping the prompt cache (#4560).
+	config := map[string]any{"agent": agent.ID, "working_dir": workdir, "mcp_config": mcpJSON, "native_tools_mode": mode, "instructions_empty": instructionsEmpty}
+	fingerprint := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%t", agent.ID, workdir, mcpJSON, mode, instructionsEmpty)
 	parts := llmtypes.AgentProcessDigests(config)
 
 	sessions.Lock()
@@ -147,8 +151,10 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 		}
 		s.rpc.process.Launched(nil, launchReason)
 		s.fingerprint, s.parts = fingerprint, parts
-		if agent.SessionMeta == nil && (resume == "" || s.currentSessionID() != resume) {
-			s.preamble = system
+		if agent.SessionMeta != nil || (resume != "" && s.currentSessionID() == resume) {
+			s.instructions.Started(system)
+		} else {
+			s.instructions.Started("")
 		}
 		sessions.Lock()
 		sessions.m[owner] = s
@@ -179,10 +185,11 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 	// A slash command (agy's /compact) must reach the agent first in the prompt;
 	// the instructions then wait for the next ordinary prompt.
 	command := strings.HasPrefix(strings.TrimSpace(prompt), "/")
-	if s.preamble != "" && !command {
-		// ACP has no system prompt field: a new session gets the chat's
-		// instructions ahead of its first prompt.
-		prompt = "<instructions>\n" + s.preamble + "\n</instructions>\n\n" + prompt
+	var deliveredInstructions func()
+	if !command {
+		var delivery instructions.Delivery
+		delivery, deliveredInstructions = s.instructions.Next(system)
+		prompt = instructions.InMessage(delivery, prompt)
 	}
 	emit := func(chunk llmtypes.StreamChunk) {
 		if opts.StreamChan != nil {
@@ -193,8 +200,8 @@ func generate(ctx context.Context, agent Agent, model string, messages []llmtype
 		}
 	}
 	response, err := s.turn(ctx, prompt, emit, turnImages{owner: owner, messages: messages})
-	if err == nil && !command {
-		s.preamble = ""
+	if err == nil && deliveredInstructions != nil {
+		deliveredInstructions()
 	}
 	return response, err
 }
