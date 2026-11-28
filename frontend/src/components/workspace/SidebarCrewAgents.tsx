@@ -84,7 +84,9 @@ export function SidebarCrewAgents({ projectId, popup = false, reordering = false
   const [dragging, setDragging] = useState<string | null>(null)
   const [draggingGroup, setDraggingGroup] = useState<string | null>(null)
   const [dropOn, setDropOn] = useState('')
-  const groups = useAgentGroups(projectId)
+  // Read the groups again when an agent is added or removed: a new agent may already be in a group.
+  const roster = crew.projectId === projectId ? crew.agents.map(agent => agent.tabId).join(' ') : ''
+  const groups = useAgentGroups(projectId, roster)
   const { order, save: saveOrder } = useSidebarAgentOrder(projectId)
   const [folds, toggleFold, unfold] = useFolds(projectId)
   // An inline name box: a new group for an agent, or a rename; error is the server's refusal.
