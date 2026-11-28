@@ -24,7 +24,6 @@ vi.mock('./CodeFilesPanel', () => ({ CodeLocalFilesSettings: () => null }))
 vi.mock('../../components/providers/ProvidersOverview', () => ({ ConnectServerForm: () => null }))
 vi.mock('./TeamTab', () => ({ AskButton: () => null, teamCard: '' }))
 vi.mock('./ShareCrew', () => ({ ShareCrew: () => null }))
-vi.mock('./MacAgentBridge', () => ({ MacAgentBridge: () => <p>AgentBridge content</p> }))
 vi.mock('./teamApi', () => ({ useTeamTab: () => ({}) }))
 vi.mock('./CrewDashboardsTab', () => ({ CrewDashboardsTab: ({ projectId }: { projectId: string }) => <p>Artifacts for {projectId}</p> }))
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true })
@@ -35,7 +34,6 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
   vi.mocked(api.get).mockResolvedValue({ data: {
     access_here: 'server', access_tabs: [
       { id: 'mac', label: 'Remote Control', group: 'online' },
-      { id: 'agentbridge', label: 'AgentBridge', detail: 'your agents and discovery', group: 'agentbridge' },
       { id: 'dashboards', label: 'Artifacts', group: 'online' },
     ],
   } } as never)
@@ -46,14 +44,7 @@ it('opens old Artifacts links as a standalone page and leaves only Online tabs',
     expect(host.querySelector('[aria-label="Artifacts page"]')?.textContent).toContain('Artifacts for artifacts-test')
     expect(host.querySelector('[role="tablist"]')).toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
-    // Remote Control and AgentBridge are separate pages, each from its own menu row (owner, 27 Nov): no tabs between them.
     expect(host.querySelector('[role="tablist"]')).toBeNull()
-    expect(host.textContent).not.toContain('AgentBridge content')
-    await act(async () => openCrewAccess('artifacts-test', '', 'agentbridge'))
-    expect(host.querySelector('[role="tablist"]')).toBeNull()
-    expect(host.querySelector('[role="tabpanel"]')?.textContent).toContain('AgentBridge content')
-    expect(host.querySelector('section[aria-label="This Mac"]')).toBeNull()
-    await act(async () => openCrewAccess('artifacts-test', '', 'mac'))
     expect(host.querySelector('section[aria-label="This Mac"]')).not.toBeNull()
     await act(async () => openCrewAccess('artifacts-test', '', 'dashboards'))
     expect(host.querySelector('[aria-label="Artifacts page"]')).not.toBeNull()
@@ -80,12 +71,13 @@ it('local mode: no Slack bot, keeps My Slack account and Remote Control', () => 
     expect(items.find(item => item.id === 'mcp:slack-bot')).toBeUndefined()
     // Remote Control (reach a Mac project from your phone) shows only on the Mac; server projects are always on the web.
     expect(items.find(item => item.id === 'mcp:online')?.group).toBe('Share')
-    expect(items.find(item => item.id === 'mcp:agentbridge')?.group).toBe('Share')
+    // AgentBridge has no row any more (#4510): each agent's menu says how other agents message it.
+    expect(items.find(item => item.id === 'mcp:agentbridge')).toBeUndefined()
     expect(items.find(item => item.id === 'mcp:slack-account')?.group).toBe('Integrations')
     // A server project opened in the Mac app is always on the web: neither row (owner screenshot, 27 Nov).
     registerRemoteProject('server-project', 'srv')
     const server = crewProjectMenuItems({ panels, projectId: 'server-project' })
-    expect(server.find(item => item.id === 'mcp:online' || item.id === 'mcp:agentbridge')).toBeUndefined()
+    expect(server.find(item => item.id === 'mcp:online')).toBeUndefined()
     unregisterRemoteProject('server-project')
   } finally {
     runtimeWindow.__APP_RUNTIME_CONFIG__ = previous

@@ -18,7 +18,6 @@ import { ShareCrew } from './ShareCrew'
 import { CrewDashboardsTab } from './CrewDashboardsTab'
 export { openCrewAccess, openCrewAskThread } from './MacSharedAgents'
 import { teamChanged, useTeamTab } from './teamApi'
-import { MacAgentBridge } from './MacAgentBridge'
 import { hasPendingCrewAccess, pendingCrewAccessSection, crewAccessDestination, type CrewAccessSection } from './MacSharedAgents'
 
 type Binding = { connection_id?: string; peer_server?: string; peer_project_id: string; updated_at?: string; editing: 'local' | 'server'; pending_action?: 'update' }
@@ -26,7 +25,7 @@ type Binding = { connection_id?: string; peer_server?: string; peer_project_id: 
 // always-online copy or a team's shared folder; empty while everything stays on this Mac.
 /** The Access page's shape, written by the server (crew_access_page.go): which tabs, whether this app holds the Mac's
  * controls ("mac") or shows the Mac-only rows as text, those rows' text, and the extra sections. */
-type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' | 'agentbridge' }
+type AccessTab = { id: CrewAccessSection; label: string; detail?: string; group?: 'team' | 'online' }
 // The Mac online tab's This Mac card, worded by the server (crew_access_page.go crewAccessMacCard).
 type MacCard = { online: boolean; status: string; line: string; kept?: string; reach?: { who: string; how: string }[] }
 type SyncStatus = { place?: CloudState; message?: string; binding: Binding | null; shared_agents?: number
@@ -186,7 +185,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   const tabKey = `agentworks:crew-access-tab:${projectId}`
   const [section, setSectionState] = useState<CrewAccessSection>(() => {
     if (hasPendingCrewAccess(projectId)) return pendingCrewAccessSection(projectId)
-    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'agentbridge' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
+    try { const saved = window.localStorage.getItem(tabKey); if (saved === 'mac' || saved === 'dashboards' || saved === 'artifacts') return crewAccessDestination(saved) } catch { /* storage unavailable */ }
     return 'mac'
   })
   const setSection = (next: CrewAccessSection) => { next = crewAccessDestination(next); setSectionState(next); if (next !== 'team' && next !== 'artifacts' && next !== 'tasks') try { window.localStorage.setItem(tabKey, next) } catch { /* storage unavailable */ } }
@@ -258,7 +257,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
   // Two pages from one reply (owner, 11 Nov: Share split into Team and Online): the server puts each tab in a group; the
   // Team page shows the team tab, the Online page the rest. A tab the server does not list for this person falls back
   // to its page's first one.
-  const page = section === 'team' ? 'team' : section === 'agentbridge' ? 'agentbridge' : 'online'
+  const page = section === 'team' ? 'team' : 'online'
   const allTabs = (status?.access_tabs || []).filter(item => item.id !== 'dashboards' && item.id !== 'artifacts').map(item => ({ ...item, tone }))
   const pageTabs = allTabs.filter(item => (item.group || 'online') === page)
   const tabs = pageTabs.length ? pageTabs : allTabs
@@ -281,7 +280,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     {/* A server project's Team page is its Access panel (no ShareCrew), so the back arrow stays here. */}
     {(tabs.length > 1 || shown !== 'team' || !!(status.access_co_owners && workspacePath)) && <div className="flex items-stretch gap-2">
     {onBack && <button type="button" aria-label="Back to workspace" title="Back (Esc)" onClick={onBack} className="grid w-8 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-md:w-10"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>}
-    {tabs.length > 1 && <div role="tablist" aria-label={page === 'team' ? 'Team' : page === 'agentbridge' ? 'AgentBridge' : 'Online'} className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
+    {tabs.length > 1 && <div role="tablist" aria-label={page === 'team' ? 'Team' : 'Online'} className={`grid min-w-0 flex-1 ${tabs.length === 2 ? 'grid-cols-2' : tabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-1 rounded-xl border border-border bg-muted/30 p-1`}>
       {tabs.map((item, index) => <button key={item.id} type="button" role="tab" id={`crew-access-${projectId}-${item.id}`} aria-controls={`crew-access-panel-${projectId}-${item.id}`} aria-selected={shown === item.id} tabIndex={shown === item.id ? 0 : -1}
         onClick={() => setSection(item.id)} onKeyDown={event => {
           const next = event.key === 'ArrowRight' ? (index + 1) % tabs.length : event.key === 'ArrowLeft' ? (index + tabs.length - 1) % tabs.length : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1
@@ -294,16 +293,7 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
     </div>}
     {/* No server connected yet (owner, 4 Nov): one sign-in card here, so the person never leaves Access; the tabs show
         their content once the connection exists. Browser approval stays the person's own step. */}
-    {needsServer && shown !== 'agentbridge' && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
-    {/* AgentBridge without a server (owner, 27 Nov): your agents on this Mac already message each other here; a server
-        is only for Discovery and your agents on other computers, so the page says that before asking you to sign in. */}
-    {here && needsServer && shown === 'agentbridge' && <section aria-label="AgentBridge" className="space-y-3">
-      <div className={teamCard}>
-        <h3 className="font-semibold">AgentBridge</h3>
-        <p className="text-[12.5px] text-muted-foreground"><b className="font-medium text-foreground">Your agents on this Mac already talk to each other</b>: your project agents and the Claude Code and Codex chats you connected. Nothing to set up, and no server needed.</p>
-      </div>
-      <SignInToServer line="Sign in to your company's AgentWorks server to reach your agents on other computers and turn on Discovery, so other people's agents can find and message yours. Your files stay on this Mac." onConnected={() => setReload(value => value + 1)} />
-    </section>}
+    {needsServer && <SignInToServer onConnected={() => setReload(value => value + 1)} />}
     {/* Mac online (owner, 6 Nov, approved mockup): two cards, the same on the Mac app and the website. The server
         words This Mac; the Mac app holds its switch, the website shows it. */}
     {!(here && needsServer) && shown === 'mac' && <section role="tabpanel" id={`crew-access-panel-${projectId}-mac`} aria-labelledby={`crew-access-${projectId}-mac`} className="space-y-3">
@@ -342,9 +332,6 @@ function CrewAccessPage({ projectId, sessionId, workspacePath, onBack }: { proje
         </section>
 
       </>}
-    </section>}
-    {!(here && needsServer) && shown === 'agentbridge' && <section role="tabpanel" id={`crew-access-panel-${projectId}-agentbridge`} aria-labelledby={`crew-access-${projectId}-agentbridge`} className="space-y-3">
-      <MacAgentBridge projectId={projectId} />
     </section>}
     {/* Team (owner, 11 Nov: its own menu row and page): the server's /share reply's team option. The Mac app's own Crew
         turns the Team on through the Mac while Mac online is off. */}

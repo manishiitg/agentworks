@@ -106,7 +106,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const [activityHidden, hideActivity] = useSetupPromptHidden(`agentworks.project-activity-hidden:${projectId}`)
   const [teamHidden, hideTeam] = useSetupPromptHidden(`agentworks.team-prompt-hidden:${projectId}`)
   const [remoteHidden, hideRemote, showRemote] = useSetupPromptHidden(`agentworks.remote-control-hidden:${projectId}`)
-  const [bridgeHidden, hideBridge, showBridge] = useSetupPromptHidden(`agentworks.agentbridge-hidden:${projectId}`)
   const addToast = useChatStore(state => state.addToast)
 
   const showMenu = (view: 'full' | 'integrations') => {
@@ -188,7 +187,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
   const noTeamYet = !teamState.view?.team.on && !access?.co_owners && !teamState.error && !teamLines.length
   const teamItem = accessItems.find(item => item.id === 'mcp:team')
   const remoteItem = accessItems.find(item => item.id === 'mcp:online')
-  const bridgeMenuItem = accessItems.find(item => item.id === 'mcp:agentbridge')
   const githubRow = section('github')?.rows[0]
   const changesStorageKey = JSON.stringify(['agentworks.changes-panel', server || 'local', user?.id || 'pending', workspacePath])
   const changes = reviewSessionId && allowed('files') ? <ChatChangesRow
@@ -227,7 +225,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       noTeamYet={noTeamYet}
       teamHidden={teamHidden}
       remoteHidden={remoteHidden}
-      bridgeHidden={bridgeHidden}
       dashboardsOpen={dashboardsOpen}
       setupsCount={setups.data?.setups.length ?? 0}
       setupsToDo={setups.data?.to_do}
@@ -237,7 +234,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
       onOpenTeamPane={openTeamPane}
       onHideTeam={() => { hideTeam(); addToast('Team hidden. Start one any time from Connections.', 'info') }}
       onHideRemote={() => { hideRemote(); addToast('Remote Control hidden. Find it in Connections.', 'info') }}
-      onHideBridge={() => { hideBridge(); addToast('AgentBridge hidden. Find it in Connections.', 'info') }}
       onToggleDashboards={toggleDashboards}
     />}
   >
@@ -255,7 +251,6 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
         ...(activityHidden && activityAgent && section('activity')?.rows.length === 0 ? [{ id: 'activity', icon: Activity, title: 'Project activity', line: projectActivityLine, action: 'Set up', onClick: () => activityAgent(projectActivitySetupMessage) }] : []),
         ...(teamHidden && noTeamYet && teamItem && !access?.co_owners ? [{ id: 'team', icon: teamItem.icon, title: crewTeamTitle(accessTree, teamItem), line: TEAM_SETUP_LINE, action: 'Start a Team', onClick: () => open(teamItem) }] : []),
         ...(remoteHidden && remoteItem ? [{ id: 'remote', icon: remoteItem.icon, title: 'Remote Control', line: 'Use this project from your phone and the website', action: 'Open', onClick: () => open(remoteItem), onShow: showRemote }] : []),
-        ...(bridgeHidden && bridgeMenuItem ? [{ id: 'agentbridge', icon: bridgeMenuItem.icon, title: bridgeMenuItem.label, line: 'Your agents and discovery', action: 'Open', onClick: () => open(bridgeMenuItem), onShow: showBridge }] : []),
       ]}/>
       {(byId.has('workflow') || byId.has('schedules')) && <TooltipProvider delayDuration={200}><WorkspaceCompactGroup key={`${scope}:automations`} title="Automations" icon={Zap}
         detail={automationChips.length ? undefined : data?.details.automations}

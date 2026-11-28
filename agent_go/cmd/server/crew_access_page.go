@@ -4,9 +4,9 @@ package server
 // component (YourComputerPanel), and this reply decides its shape. AccessHere "mac" means this app holds the Mac's own
 // controls (the Mac app's local backend); anywhere else the rows only the Mac can change come as text, worded here.
 
-// Each tab belongs to one of the side menu's pages (owner, 11 Nov: Share split into Team and Online; 27 Nov: AgentBridge
-// its own row): "team" is the people who work on the Crew with you, "online" is Remote Control, "agentbridge" your
-// agents on AgentBridge. The page shows one group's tabs.
+// Each tab belongs to one of the side menu's pages (owner, 11 Nov: Share split into Team and Online): "team" is the
+// people who work on the Crew with you, "online" is Remote Control. The page shows one group's tabs. AgentBridge has no
+// page any more (owner, 28 Nov, #4510): each agent's menu says how other agents message it.
 type crewAccessTab struct {
 	ID     string `json:"id"`
 	Label  string `json:"label"`
@@ -43,7 +43,7 @@ func crewAccessMacCardFor(online bool, status, line string, teamOn bool) *crewAc
 		{Who: "You, from your other agents", How: "Always, on your network. Nothing to turn on."},
 		{Who: "You, from the website or phone", How: "When Remote Control is on and this Mac is on."},
 		{Who: "Your Team", How: team},
-		{Who: "Other people's agents", How: "Only agents with Discovery on in AgentBridge. They answer as you, by your rules."},
+		{Who: "Other people's agents", How: "Only agents you open to others on the server (ask this project's chat). They answer as you, by your rules."},
 	}}
 }
 
@@ -54,12 +54,11 @@ func crewAccessMacOnline(mac string, teamOn bool) *crewAccessMacCard {
 var crewAccessMacTabs = func() []crewAccessTab {
 	tabs := []crewAccessTab{
 		{ID: "mac", Label: "Remote Control", Detail: "you, from your phone or the website", Group: "online"},
-		{ID: "agentbridge", Label: "AgentBridge", Detail: "your agents and discovery", Group: "agentbridge"}, // its own menu row and page (owner, 27 Nov)
 	}
 	return append(tabs, crewAccessPeopleTabs...)
 }()
 
-// Team, AgentBridge and Artifacts have their own pages; Online is Remote Control. Slack stays in Connections (owner, 15 Nov).
+// Team and Artifacts have their own pages; Online is Remote Control. Slack stays in Connections (owner, 15 Nov).
 var crewAccessPeopleTabs = []crewAccessTab{
 	{ID: "team", Label: "Team", Detail: "people who work on it with you", Group: "team"},
 	{ID: "dashboards", Label: "Artifacts", Detail: "what this project publishes", Group: "online"},

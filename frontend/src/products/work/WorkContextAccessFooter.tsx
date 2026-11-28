@@ -45,7 +45,6 @@ export function WorkContextAccessFooter({
   noTeamYet,
   teamHidden,
   remoteHidden,
-  bridgeHidden,
   dashboardsOpen,
   setupsCount,
   setupsToDo,
@@ -55,7 +54,6 @@ export function WorkContextAccessFooter({
   onOpenTeamPane,
   onHideTeam,
   onHideRemote,
-  onHideBridge,
   onToggleDashboards,
 }: {
   projectId: string
@@ -71,7 +69,6 @@ export function WorkContextAccessFooter({
   noTeamYet: boolean
   teamHidden: boolean
   remoteHidden: boolean
-  bridgeHidden: boolean
   dashboardsOpen: boolean
   setupsCount: number
   setupsToDo?: number
@@ -81,7 +78,6 @@ export function WorkContextAccessFooter({
   onOpenTeamPane: (view: TeamPanelView, agent?: string) => void
   onHideTeam: () => void
   onHideRemote: () => void
-  onHideBridge: () => void
   onToggleDashboards: () => void
 }) {
   if (accessItems.length === 0) return null
@@ -146,13 +142,11 @@ export function WorkContextAccessFooter({
 
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
-  // Remote Control and AgentBridge are two rows with their own pages (owner, 28 Nov: "make it two lines only");
-  // either can be hidden into Connections (#4486), like Team and Project activity before setup.
+  // Remote Control can be hidden into Connections (#4486), like Team and Project activity before setup. AgentBridge's
+  // row and page are gone (#4510): each agent's menu says how other agents message it.
   const hideButton = (label: string, onHide: () => void) => <button type="button" onClick={onHide} aria-label={`Hide ${label}`} title={`Hide ${label}. It stays in Connections.`} className="flex h-5 w-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/hide:opacity-100"><X aria-hidden="true" className="h-3 w-3" /></button>
   const renderAccessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
     ? <div key={item.id} className="group/hide flex items-center"><div className="min-w-0 flex-1"><CrewOnlineRow state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div>{hideButton('Remote Control', onHideRemote)}</div>
-    : item.id === 'mcp:agentbridge'
-    ? <div key={item.id} className="group/hide flex items-center"><div className="min-w-0 flex-1"><Row icon={item.icon} onClick={() => onOpen(item)}>{item.label}</Row></div>{hideButton(item.label, onHideBridge)}</div>
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={() => openCrewAccess(projectId, '', 'team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} expanded={showTeam} onToggle={onToggleTeamCollapsed} needsCount={needsCount} /><PendingAgentForks state={teamState} place="menu" /></div>
     : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
       {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
@@ -165,7 +159,7 @@ export function WorkContextAccessFooter({
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam ? 'pb-1' : undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} onPanelView={onOpenTeamPane} askAgent={askAgent} />{!teamState.view?.team.on && renderTreeLines(teamLines)}</div>
 
   const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) 
-    && !(item.id === 'mcp:online' && remoteHidden) && !(item.id === 'mcp:agentbridge' && bridgeHidden))
+    && !(item.id === 'mcp:online' && remoteHidden))
 
   return <div className="space-y-0.5">
     {visibleItems.map(item => <div key={item.id}>

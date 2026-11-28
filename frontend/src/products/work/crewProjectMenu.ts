@@ -1,4 +1,4 @@
-import { BookOpen, Cable, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
+import { BookOpen, Database, DollarSign, Files, Folder, Github, Globe, Laptop, LayoutDashboard, MessageSquareText, MonitorCog, Route, Zap, Settings, Sparkles, Terminal, UsersRound, Vault, type LucideIcon } from 'lucide-react'
 import type { ProductPanel } from '../productPanels'
 import type { WorkWorkspaceView } from './WorkWorkspacePane'
 import { projectChannelSections, projectConnectionSections } from '../../components/workspace/WorkspaceProjectNavigation'
@@ -43,8 +43,6 @@ export function crewProjectMenuItems({ panels, allowedProducts, enabledPanels, i
     // opened in the Mac app shows its panel as on the website, without either row (owner, 27 Nov).
     const onThisMac = isLocalDeployment() && !remoteProjectConnection(projectId)
     if (onThisMac) add('mcp', 'Share', 'Remote Control', Globe, 'online')
-    // AgentBridge is its own row and page beside Remote Control (owner, 27 Nov), not a tab inside it.
-    if (onThisMac) add('mcp', 'Share', 'AgentBridge', Cable, 'agentbridge')
     add('mcp', 'Share', 'Artifacts', LayoutDashboard, 'artifacts')
     // The Slack bot row opens Connections → Slack bot on server projects (owner, 14 Nov).
     // Local Mac projects keep Slack as me only (owner, 25 Nov).
@@ -82,7 +80,7 @@ export function crewFullMenuGroups(inventory: CrewMenuItem[]) {
     ['mcp:artifacts', 'dashboard', 'files', 'database', 'shell'],
     ['workflow', 'schedules'],
     ['browser', 'mcp:connected', 'mcp:cli', 'mcp:gmail', 'mcp:github', 'mcp:slack-account', 'mcp:slack-bot', 'mcp:whatsapp', 'mcp:folders', 'mcp:mac-folders', 'mcp:computer-use', 'mcp:secrets', 'memory:skills'],
-    ['mcp:team', 'mcp:online', 'mcp:agentbridge'],
+    ['mcp:team', 'mcp:online'],
     ['identity:general', 'identity:models', 'memory:memory', 'history', 'costs'],
   ]
   const hasSharedArtifacts = inventory.some(item => item.id === 'mcp:artifacts')

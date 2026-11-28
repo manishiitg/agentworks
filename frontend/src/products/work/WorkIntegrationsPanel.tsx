@@ -28,7 +28,6 @@ export type WorkIntegrationTab = 'apps' | 'brain' | 'folders' | 'mac-folders' | 
 const ACCESS_OPEN_TARGETS: Record<string, { section: CrewAccessSection; teamSection?: CrewTeamSection }> = {
   team: { section: 'team' },
   online: { section: 'mac' },
-  agentbridge: { section: 'agentbridge' },
   agents: { section: 'team', teamSection: 'agents' },
   dashboards: { section: 'artifacts' },
   artifacts: { section: 'artifacts' },
@@ -58,7 +57,7 @@ export function WorkIntegrationsPanel({ accessLoading = false, onAppsSaved, canE
     // Artifacts is its own page; the former dashboards target redirects here (owner, 14 Nov).
     // Team and Online (owner, 11 Nov) are the same page, each opened at its own tabs.
     const local = isLocalDeployment()
-    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'agentbridge', 'dashboards', 'artifacts'].includes(target) ? 'access' : target === 'slack-bot' && local ? 'slack-account' : target
+    const next = ['team', 'online', 'share', 'computer', 'laptop', 'sync', 'agents', 'dashboards', 'artifacts'].includes(target) ? 'access' : target === 'slack-bot' && local ? 'slack-account' : target
     if (next === 'computer-use' && (!canEdit || !local)) return
     if (!isWorkIntegrationTabEnabled(next === 'github' ? 'secrets' : next, enabledPanels) || next === 'brain' && !integrationProductAvailable('knowledgebase', allowedProducts)) return
     if (['connected', 'available', 'secrets', 'gmail', 'slack-account', 'github'].includes(next)) { setTab('apps'); setIntegrationSection(next as IntegrationSection); return }

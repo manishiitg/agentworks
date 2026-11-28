@@ -7,6 +7,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
 import { AgentShareIcon, describeAgentShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
+import { AgentMessageFrom } from './AgentMessageFrom'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
 import { codingProviderName } from '../../utils/codingProviderName'
@@ -41,6 +42,8 @@ export interface AgentCardInfo {
   /** Its tab, for the Now row (the same state as the mark left of its name); activity is a Crew Main's own. */
   tabId?: string
   activity?: 'running' | 'waiting' | null
+  /** What to say in Claude Code, Codex or another agent to message this one; only on your own agents. */
+  messageLine?: string
   /** Its setup icon and rows, from the server (crew_tab_setup.go). */
   setup?: TeamTabSetup
   /** Sends the server's Automations… message to this agent's own chat; only on your own agents. */
@@ -220,6 +223,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={info.purpose || 'Add a purpose'}>{setupDetails}</AgentDetailSection> : setupDetails}
+      {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent"><AgentMessageFrom line={info.messageLine} /></AgentDetailSection>}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}
