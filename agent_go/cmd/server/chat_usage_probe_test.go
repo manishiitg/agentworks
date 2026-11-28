@@ -87,3 +87,15 @@ func TestChatUsageProbeAsksOnlyTheChatsAccount(t *testing.T) {
 		t.Fatalf("cached usage bypassed account authorization: %v", limits)
 	}
 }
+
+func TestChatUsageProbeNoteNamesMuseAPIKey(t *testing.T) {
+	if got := chatUsageProbeNote("muse-cli", []string{"HOME=/h", "META_API_KEY=k"}); got != museAPIKeyPlanNote {
+		t.Fatalf("muse key note = %q", got)
+	}
+	if got := chatUsageProbeNote("muse-cli", []string{"HOME=/h", "META_API_KEY="}); got != "" {
+		t.Fatalf("muse login note = %q", got)
+	}
+	if got := chatUsageProbeNote("codex-cli", []string{"META_API_KEY=k"}); got != "" {
+		t.Fatalf("other provider note = %q", got)
+	}
+}

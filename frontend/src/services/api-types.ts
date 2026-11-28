@@ -252,6 +252,8 @@ export interface ChatContextView {
   used_tokens?: number
   window_tokens?: number
   limits?: { label: string; used_percent: number; resets_at?: string }[]
+  /** Why limits is empty, when the account's provider said (e.g. a Muse account on an API key). */
+  limits_note?: string
   idle_compaction?: { on: boolean }
   idle_compaction_hint?: string
   /** On: a reply that ends with the chat over 300K tokens is followed by a compaction. Off unless turned on. */
