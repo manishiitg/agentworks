@@ -439,7 +439,8 @@ def send_slack(channel: str, text: str) -> Reply:
 def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
           tier: str | None = None, reasoning: str | None = None, scripts: Sequence[str] = (),
           mcp: Sequence[str] = (), skills: Sequence[str] = (), tools: Sequence[str] = (), apps: Sequence[str] = (),
-          browser: bool = False, knowledge: str | None = None,
+          browser: bool = False, browser_secrets: Mapping[str, str] | None = None,
+          knowledge: str | None = None,
           timeout_seconds: float | None = None, conversation_id: str | None = None,
           key: str | None = None, redo: bool = False,
           expect: Mapping[str, Any] | None = None) -> Reply:
@@ -457,6 +458,10 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     knowledge defaults to "read" for the owning workflow; "write" also allows
     its normal knowledge-note writes. Continued conversations keep their setting.
     browser uses this automation's connected browser and defaults to False.
+    browser_secrets (optional mapping of key name -> secret value, requires
+    browser=True) binds ephemeral browser-only secrets for this call only so the
+    agent can type them via $SECRET_<NAME> in browser fill/type without putting
+    values in prompts, tool arguments, run files, helper logs, or shell env.
     tools names existing category:tool selections, for example
     human_tools:integrations.google. It cannot add an unavailable app or login.
     apps=("google", "slack", "github") is a shorthand for those existing app
@@ -489,12 +494,26 @@ def agent(name: str, message: str | Sequence[str], *, model: str | None = None,
     messages = [message] if isinstance(message, str) else list(message)
     if not name.strip() or not messages or any(not isinstance(item, str) or not item.strip() for item in messages):
         raise ValueError("agent needs a name and at least one non-empty message")
+    secrets_payload: dict[str, str] | None = None
+    if browser_secrets is not None:
+        if not isinstance(browser_secrets, Mapping):
+            raise ValueError("browser_secrets must be a mapping of key names to non-empty strings")
+        secrets_payload = {}
+        for secret_key, secret_value in browser_secrets.items():
+            if not isinstance(secret_key, str) or not secret_key.strip():
+                raise ValueError("browser_secrets keys must be non-empty strings")
+            if not isinstance(secret_value, str) or not secret_value:
+                raise ValueError(f"browser_secrets value for {secret_key!r} must be a non-empty string")
+            secrets_payload[secret_key] = secret_value
+        if secrets_payload and not browser and not conversation_id:
+            raise ValueError("browser_secrets requires browser=True")
     try:
         return _call("agent", {"name": name, "messages": messages, "model": model,
                      "tier": tier, "reasoning": reasoning, "scripts": list(scripts), "mcp": list(mcp),
                      "skills": list(skills), "tools": list(tools), "apps": list(apps), "browser": browser,
                      "knowledge": knowledge, "timeout_seconds": timeout_seconds,
                      "conversation_id": conversation_id, "source_call": source_call,
+                     **({"browser_secrets": secrets_payload} if secrets_payload else {}),
                      **({"expect": dict(expect)} if expect is not None else {})}, key, redo)
     except AutomationError as error:
         return Reply(ok=False, error=str(error))

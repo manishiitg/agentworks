@@ -231,6 +231,11 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		if err != nil {
 			return "", err
 		}
+		loggedArguments := sanitizePythonHelperArguments(action, arguments)
+		loggedRequestJSON, err := json.Marshal(map[string]interface{}{"action": action, "arguments": loggedArguments})
+		if err != nil {
+			return "", err
+		}
 		requestHash := sha256.Sum256(requestJSON)
 		argumentsHash := hex.EncodeToString(requestHash[:])
 		scriptInvocation := ""
@@ -276,7 +281,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 							err = hcpo.writePythonHelperState(ctx, filepath.ToSlash(filepath.Join(hcpo.GetWorkspacePath(), stateRelative)), string(data))
 						}
 						if err == nil {
-							err = hcpo.recordPythonResumeCall(ctx, label, action, arguments, true, "completed_result")
+							err = hcpo.recordPythonResumeCall(ctx, label, action, loggedArguments, true, "completed_result")
 						}
 						if err != nil {
 							return encode(pythonHelperReply{Error: "Cannot record the reused call: " + err.Error()})
@@ -289,7 +294,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 			return encode(pythonHelperReply{Error: "Cannot read this helper's saved receipt: " + err.Error()})
 		}
 		if resume && reusable {
-			if err := hcpo.recordPythonResumeCall(ctx, label, action, arguments, false, resumeReason); err != nil {
+			if err := hcpo.recordPythonResumeCall(ctx, label, action, loggedArguments, false, resumeReason); err != nil {
 				return encode(pythonHelperReply{Error: "Cannot record this resumed call: " + err.Error()})
 			}
 		}
@@ -301,7 +306,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		}
 		defer log.Close()
 		log.Note(action + " starting")
-		_, _ = log.Stream("request").Write(append(requestJSON, '\n'))
+		_, _ = log.Stream("request").Write(append(loggedRequestJSON, '\n'))
 		if scriptInvocation == "" {
 			scriptInvocation = id
 		}
@@ -503,7 +508,7 @@ func (hcpo *StepBasedWorkflowOrchestrator) pythonAutomationHandler(parent contex
 		} else if log.Error() != "" {
 			call.Reply.LogError += " Helper activity log: " + log.Error()
 		}
-		if err := hcpo.savePythonRunEvidence(ctx, id, action, arguments, call.Reply); err != nil {
+		if err := hcpo.savePythonRunEvidence(ctx, id, action, loggedArguments, call.Reply); err != nil {
 			call.Reply.LogError += " Run evidence could not be saved: " + err.Error()
 		}
 		call.Complete = true

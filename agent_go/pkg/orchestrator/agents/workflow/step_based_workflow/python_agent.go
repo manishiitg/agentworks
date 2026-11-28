@@ -9,7 +9,9 @@ import (
 	"maps"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -392,10 +394,129 @@ func (hcpo *StepBasedWorkflowOrchestrator) preparePythonAgent(ctx context.Contex
 	return &saved, selection, nil
 }
 
+var pythonBrowserSecretNamePattern = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
+
+// sanitizePythonHelperArguments strips ephemeral secret values from helper
+// request payloads before writing helper logs, resume records, or evidence.
+func sanitizePythonHelperArguments(action string, arguments map[string]interface{}) map[string]interface{} {
+	if action != "agent" || arguments == nil {
+		return arguments
+	}
+	raw, exists := arguments["browser_secrets"]
+	if !exists || raw == nil {
+		return arguments
+	}
+	sanitized := maps.Clone(arguments)
+	switch secretsMap := raw.(type) {
+	case map[string]interface{}:
+		redacted := make(map[string]string, len(secretsMap))
+		for key := range secretsMap {
+			redacted[key] = "[REDACTED]"
+		}
+		sanitized["browser_secrets"] = redacted
+	case map[string]string:
+		redacted := make(map[string]string, len(secretsMap))
+		for key := range secretsMap {
+			redacted[key] = "[REDACTED]"
+		}
+		sanitized["browser_secrets"] = redacted
+	default:
+		sanitized["browser_secrets"] = "[REDACTED]"
+	}
+	return sanitized
+}
+
+func parsePythonAgentBrowserSecrets(arguments map[string]interface{}) (map[string]string, error) {
+	raw, exists := arguments["browser_secrets"]
+	if !exists || raw == nil {
+		return nil, nil
+	}
+	var entries map[string]interface{}
+	switch typed := raw.(type) {
+	case map[string]interface{}:
+		entries = typed
+	case map[string]string:
+		entries = make(map[string]interface{}, len(typed))
+		for k, v := range typed {
+			entries[k] = v
+		}
+	default:
+		return nil, fmt.Errorf("browser_secrets must be an object mapping key names to non-empty strings.")
+	}
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	secrets := make(map[string]string, len(entries))
+	for rawKey, rawVal := range entries {
+		name := strings.TrimSpace(rawKey)
+		name = strings.TrimPrefix(name, "SECRET_")
+		if name == "" || !pythonBrowserSecretNamePattern.MatchString(name) || strings.HasPrefix(name, "AGENTWORKS_BROWSER_INPUT_") {
+			return nil, fmt.Errorf("Invalid browser_secrets key %q: use letters, digits, and underscores (for example SITE_PASSWORD).", rawKey)
+		}
+		value, ok := rawVal.(string)
+		if !ok || value == "" {
+			return nil, fmt.Errorf("browser_secrets value for %q must be a non-empty string.", name)
+		}
+		envKey := "SECRET_" + name
+		if prev, dup := secrets[envKey]; dup && prev != value {
+			return nil, fmt.Errorf("Duplicate browser_secrets key %q.", name)
+		}
+		secrets[envKey] = value
+	}
+	return secrets, nil
+}
+
+func pythonBrowserSecretRedactValues(secrets map[string]string) []string {
+	if len(secrets) == 0 {
+		return nil
+	}
+	set := make(map[string]struct{}, len(secrets)*2)
+	for _, value := range secrets {
+		if len(value) < 3 {
+			continue
+		}
+		set[value] = struct{}{}
+		if encoded, err := json.Marshal(value); err == nil && len(encoded) >= 2 {
+			escaped := string(encoded[1 : len(encoded)-1])
+			if len(escaped) >= 3 {
+				set[escaped] = struct{}{}
+			}
+		}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(set))
+	for v := range set {
+		out = append(out, v)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if len(out[i]) != len(out[j]) {
+			return len(out[i]) > len(out[j])
+		}
+		return out[i] < out[j]
+	})
+	return out
+}
+
+func redactPythonAgentText(text string, values []string) string {
+	out := redaction.Text(text)
+	for _, value := range values {
+		if len(value) < 3 {
+			continue
+		}
+		out = strings.ReplaceAll(out, value, "[REDACTED]")
+	}
+	return out
+}
+
 // Plain log scope is provider_transcript, not byte-complete OS stdout. Keep
 // the existing normalized transcript/redaction contract and record every delta
 // actually emitted by the provider alongside it, with original timestamps.
-type pythonAgentLogObserver struct{ log *runlog.Log }
+type pythonAgentLogObserver struct {
+	log          *runlog.Log
+	redactValues []string
+}
 
 func (o *pythonAgentLogObserver) Name() string { return "python-provider-transcript" }
 func (o *pythonAgentLogObserver) HandleEvent(_ context.Context, event *events.AgentEvent) error {
@@ -403,13 +524,16 @@ func (o *pythonAgentLogObserver) HandleEvent(_ context.Context, event *events.Ag
 		return nil
 	}
 	if chunk, ok := event.Data.(*events.StreamingChunkEvent); ok {
-		data, _ := json.Marshal(map[string]interface{}{"source": chunk.Source, "delta": chunk.IsDelta, "text": redaction.Text(chunk.Content), "turn_id": event.TurnID, "index": chunk.ChunkIndex})
+		data, _ := json.Marshal(map[string]interface{}{"source": chunk.Source, "delta": chunk.IsDelta, "text": redactPythonAgentText(chunk.Content, o.redactValues), "turn_id": event.TurnID, "index": chunk.ChunkIndex})
 		o.log.WriteAt("provider_chunk", append(data, '\n'), event.Timestamp)
 	} else if normalized, ok := transcriptevents.NormalizeBackgroundTranscriptEvent(event); ok {
 		transcript := transcriptevents.BackgroundAgentTranscript{Events: []transcriptevents.BackgroundAgentTranscriptEvent{normalized}}
 		transcript.RedactSensitiveText()
 		data, _ := json.Marshal(transcript.Events[0])
-		o.log.WriteAt(normalized.Type, append(data, '\n'), normalized.Timestamp)
+		if len(o.redactValues) > 0 {
+			data = []byte(redactPythonAgentText(string(data), o.redactValues))
+		}
+		o.log.WriteAt(normalized.Type, append(data, '\n'), event.Timestamp)
 	}
 	return nil
 }
@@ -427,10 +551,18 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	if err != nil {
 		return pythonHelperReply{Error: err.Error()}
 	}
+	browserSecrets, err := parsePythonAgentBrowserSecrets(arguments)
+	if err != nil {
+		return pythonHelperReply{Error: err.Error()}
+	}
 	saved, selection, err := hcpo.preparePythonAgent(ctx, parent, args)
 	if err != nil {
 		return pythonHelperReply{Error: err.Error()}
 	}
+	if len(browserSecrets) > 0 && !saved.Settings.Browser {
+		return pythonHelperReply{Error: "Use browser=True when passing browser_secrets."}
+	}
+	secretRedactValues := pythonBrowserSecretRedactValues(browserSecrets)
 	defer func() {
 		if err := hcpo.protectPythonAgentArtifacts(saved.StepID); err != nil {
 			reply.OK = false
@@ -486,7 +618,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	var runtime agents.OrchestratorAgent
 	// Own cleanup before factory setup can allocate a tool session.
 	cleanup := &agentSequenceSession{runtime: &agentSequenceRuntime{SessionID: toolsSession, PreserveWorkspace: true}}
-	defer func() { hcpo.closeAgentRuntime(cleanup, "Python agent call finished") }()
+	defer func() {
+		common.ClearSessionBrowserSecrets(toolsSession)
+		hcpo.closeAgentRuntime(cleanup, "Python agent call finished")
+	}()
 	saved.Session.delegation = &agentSequenceDelegation{ReadPaths: read, WritePaths: write, CreateAgent: func(turnCtx context.Context) (agents.OrchestratorAgent, error) {
 		made, err := hcpo.createExecutionOnlyAgent(turnCtx, "execution_only", saved.StepID, saved.Name, &saved.Config, step, saved.StepID, "")
 		if err != nil {
@@ -499,7 +634,10 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 			return nil, err
 		}
 		common.SetSessionWorkingDir(toolsSession, workflowAbsPath(runRoot))
-		if err = made.GetBaseAgent().AddObserver(&pythonAgentLogObserver{log: log}); err != nil {
+		if len(browserSecrets) > 0 {
+			common.SetSessionBrowserSecrets(toolsSession, browserSecrets)
+		}
+		if err = made.GetBaseAgent().AddObserver(&pythonAgentLogObserver{log: log, redactValues: secretRedactValues}); err != nil {
 			return nil, err
 		}
 		if handle := saved.AgentSessionHandle; handle != nil && !handle.Empty() {
@@ -534,19 +672,20 @@ func (hcpo *StepBasedWorkflowOrchestrator) runPythonAgent(ctx context.Context, p
 	runTurn := func(message string) bool {
 		item := AgentItem{ID: fmt.Sprintf("turn-%d", saved.Session.ExecutionTurnCount+1), Type: "user_message", Message: message, WriteAccess: AgentWriteAccess{DB: true}}
 		result, turnErr := hcpo.executeAgentUserMessage(agentCtx, step, item, 0, saved.StepID, &saved.Session)
-		finalAnswer = redaction.Text(result)
+		finalAnswer = redactPythonAgentText(result, secretRedactValues)
 		log.WriteAt("answer", []byte(finalAnswer+"\n"), time.Now().UTC())
 		reply.Text = scriptOutputPreview(finalAnswer, log.Path())
 		saved.AgentSessionHandle = currentAgentSessionHandle(runtime)
 		if saveErr := persist(); saveErr != nil {
 			failure = saveErr
-			reply.Error = "The agent ran, but its continuation state could not be saved: " + saveErr.Error()
+			reply.Error = "The agent ran, but its continuation state could not be saved: " + redactPythonAgentText(saveErr.Error(), secretRedactValues)
 			return false
 		}
 		if turnErr != nil {
 			failure = turnErr
-			reply.Error = scriptOutputPreview(redaction.Text(turnErr.Error()), log.Path())
-			log.Note("agent call failed: " + redaction.Text(turnErr.Error()))
+			redactedErr := redactPythonAgentText(turnErr.Error(), secretRedactValues)
+			reply.Error = scriptOutputPreview(redactedErr, log.Path())
+			log.Note("agent call failed: " + redactedErr)
 			return false
 		}
 		return true
