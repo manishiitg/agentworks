@@ -293,7 +293,15 @@ func (api *StreamingAPI) createOnlineProjectFromMac(ctx context.Context, userID,
 	}
 	madeName, _ := created["name"].(string)
 	out := map[string]any{"server": c.Name, "project": id, "name": firstNonEmptyTrimmed(madeName, name), "owner": "you"}
-	if _, err := callServerTool(ctx, userID, c, "crew_owners", map[string]any{"crew_id": id, "action": "team_add", "team_id": macProject}); err != nil {
+	// On the server the Team is keyed by the Team's server copy (the pairing's peer), not by this Mac project's ID.
+	team := ""
+	if _, binding, _, bindErr := api.desktopCrewChatBinding(ctx, macProject); bindErr == nil {
+		team = binding.PeerProjectID
+	}
+	if team == "" {
+		out["team"] = "not added: this Mac project's Team is not on the server yet"
+		out["note"] = "The project was made, but this project's Team is not in its Users yet. Turn the Team on (Team panel), then add it on the server: the project's Access page, Users."
+	} else if _, err := callServerTool(ctx, userID, c, "crew_owners", map[string]any{"crew_id": id, "action": "team_add", "team_id": team}); err != nil {
 		out["team"] = "not added: " + err.Error()
 		out["note"] = "The project was made, but this project's Team is not in its Users yet. Turn the Team on (Team panel), then add it on the server: the project's Access page, Users."
 	} else {
