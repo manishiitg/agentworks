@@ -25,7 +25,7 @@ import { teamRequest, type TeamTarget } from '../../products/work/teamApi'
 import { GlobalActivityMonitor } from '../GlobalActivityMonitor'
 
 type Crew = { id: string; name: string; team_live?: TeamLiveView }
-type Row = { you?:boolean; id?:string; target?:TeamTarget; purpose?: string; examples?: string[]; cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
+type Row = { you?:boolean; id?:string; target?:TeamTarget; purpose?: string; examples?: string[]; cli?:string; engine?:string; typing?: boolean; last_message?: string; last_message_at?: string; private?: boolean; can_fork?: boolean; key: string; personKey: string; person: string; network: string; agent: string; crew: string; activity: string; doing?: string; waiting?: string; open: () => void }
 type Face = AvatarFields & { connection?: string; key: string; name: string; network: string; online: boolean; line: string; working: number; waiting: number; idle: number }
 
 
@@ -129,7 +129,7 @@ export function TeamMonitor({ representedSessionIds }: { representedSessionIds?:
   place();window.addEventListener('resize',place);return()=>window.removeEventListener('resize',place)
  },[open,only,byPerson,needs.length,rows.length])
  const avatar=(face:Face)=><button key={face.key} type="button" title={`${face.name} · ${face.line}`} aria-label={`Show ${face.name}'s agents`} onClick={()=>setOnly(face.key)} className="relative inline-flex h-5 w-5 shrink-0 rounded-full"><Avatar {...face} name={face.name} connection={face.connection} className="h-5 w-5 shrink-0 rounded-full text-[9px]"/>{face.online&&<span aria-label="Mac online" className="absolute -bottom-px -right-px h-1.5 w-1.5 rounded-full border border-background bg-emerald-500"/>}</button>
- const rowView=(row:Row)=>{const face=faces.find(face=>face.key===row.personKey);return <div key={row.key} className="flex min-w-0 items-center"><TeamMonitorAgentRow name={row.agent} purpose={row.purpose} examples={row.examples} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} onOpen={()=>{setOpen(false);row.open()}}/>{!row.you&&row.id&&row.target&&<ForkTeammateAgent target={row.target} agent={row.id} name={row.agent} compact/>}{!selected&&face&&avatar(face)}</div>}
+ const rowView=(row:Row)=>{const face=faces.find(face=>face.key===row.personKey);return <div key={row.key} className="flex min-w-0 items-center"><TeamMonitorAgentRow name={row.agent} purpose={row.purpose} examples={row.examples} cli={row.cli||row.engine} activity={row.activity} line={row.last_message||row.doing||row.waiting} team={row.crew} server={multi?row.network:undefined} onOpen={()=>{setOpen(false);row.open()}}/>{row.can_fork&&row.id&&row.target&&<ForkTeammateAgent target={row.target} agent={row.id} name={row.agent} compact/>}{!selected&&face&&avatar(face)}</div>}
  const askPerson=()=>{if(!selected)return;if(fillMainDraft('',`Ask ${selected.name}’s agents in their Teams: `))setOpen(false);else useChatStore.getState().addToast('Open one of your own agents first.','info')}
  const answer=(team:MonitorTeam)=>async(need:string,button:string,helper?:string,comment?:string)=>{
   const identity=captureChatIdentity()

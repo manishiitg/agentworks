@@ -98,14 +98,17 @@ it('does not apply my working-copy move gate to a teammate I am watching',async(
  expect(host.textContent).toBe('peer-history / web')
 })
 
-// #2975: a Hidden chat still offers Fork, but the server refusal cannot mutate
-// its observed tab. Successful copies use the same local endpoint afterwards.
-it('keeps Fork visible and shows the server Hidden refusal without touching the watched chat',async()=>{
+// Owner, 28 Nov (replacing #2975's "Hidden still offers Fork"): Fork shows only when the server says the viewer may
+// fork it now. A chat hidden after the list was read is still refused by the server without touching the watched tab.
+it('offers Fork only when the server allows it and shows a later Hidden refusal without touching the watched chat',async()=>{
  f.tabs.watch={name:'Peer agent',metadata:{agentProfileProjectId:'crew',agentProfileTabCanWrite:false,agentProfileTabOwnerID:'peer',agentProfileConversationKey:'peer-chat'}}
  f.team={target:{project:'remote-crew',connection:'saved',localProject:'crew'},view:{agents:[{id:'peer',name:'Peer agent',owner_name:'Colleague',place:'mac',chat_share:'agent'}]}}
  const request=vi.fn().mockResolvedValue({ok:false,json:async()=>({error:{message:"This chat is hidden. You can't fork it."}})})
  vi.stubGlobal('fetch',request)
  await act(async()=>root.render(<TeammateChatIdentity tabId="watch"/>))
+ expect(host.querySelector('[aria-label="Fork Peer agent to my Mac"]')).toBeNull()
+ f.team.view.agents[0]={...f.team.view.agents[0],can_fork:true}
+ await act(async()=>root.render(<TeammateChatIdentity tabId="watch" key="allowed"/>))
  await act(async()=>host.querySelector<HTMLButtonElement>('[aria-label="Fork Peer agent to my Mac"]')!.click())
  expect(request).not.toHaveBeenCalled()
  const submit=()=>[...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button=>button.textContent==='Fork to my Mac')!

@@ -267,7 +267,8 @@ type crewShareSharedEntry struct {
 	// agent (owner, 12 Nov); empty for an action. OwnerID picks that person's view of the chat.
 	Key     string `json:"key,omitempty"`
 	OwnerID string `json:"owner_id,omitempty"`
-	// AgentID is the Team agent's ID for Fork; CopyBytes is the size of its conversation copy on this server.
+	// AgentID is the Team agent's ID for Fork, set only when the viewer may fork it now (its chat is Live); CopyBytes
+	// is the size of its conversation copy on this server.
 	AgentID   string `json:"agent_id,omitempty"`
 	CopyBytes int64  `json:"copy_bytes,omitempty"`
 }
@@ -325,7 +326,9 @@ func crewShareSharedWithYou(t crewTeam, viewer string, rows []crewTeamTabAgent, 
 		}
 		entry := crewShareSharedEntry{Name: a.Name, Line: line, Working: a.Activity == "running", Watch: a.ChatShare == crewChatShareLive, Address: a.Address, Key: firstNonEmptyTrimmed(a.WatchKey, a.Key), OwnerID: a.OwnerID}
 		if registered, ok := t.Agents[a.Key]; ok {
-			entry.AgentID = registered.ID
+			if crewAgentSelfForkAdmit(t, viewer, registered) == nil {
+				entry.AgentID = registered.ID
+			}
 			entry.CopyBytes = crewOfflineCopyBytes(t.ProjectID, registered.ID)
 		}
 		if registered, ok := t.Agents[a.Key]; ok && registered.Kind == "terminal" {
