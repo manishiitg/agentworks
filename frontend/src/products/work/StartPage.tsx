@@ -40,6 +40,15 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
   const [folder, setFolder] = useState<StartFolder>()
   const [menu, setMenu] = useState<'folder' | 'place' | false>(false)
   const [server, setServer] = useState<StartServer>()
+  // Where "Start in a new folder" puts the project, as the server says: its projects folder.
+  const [newFolderParent, setNewFolderParent] = useState('')
+  useEffect(() => {
+    if (mode !== 'new' || !canChooseFolder) return
+    let active = true
+    void agentApi.getProjectCreationLocation('work', '').then(data => { if (active && data.folder) setNewFolderParent(data.folder.replace(/\/[^/]*$/, '')) }).catch(() => {})
+    return () => { active = false }
+  }, [mode, canChooseFolder])
+  const newFolderPlace = newFolderParent.split('/').filter(Boolean).slice(-2).join('/')
   const [recent, setRecent] = useState<string[] | null>(null)
   const [typing, setTyping] = useState(false)
   const [typed, setTyped] = useState('')
@@ -108,7 +117,7 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
           ? <button type="button" aria-expanded={menu === 'place'} onClick={() => setMenu(menu === 'place' ? false : 'place')} className={`${pill} hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`} data-testid="work-start-place">{server ? <Cloud className="h-3.5 w-3.5" /> : <Laptop className="h-3.5 w-3.5" />}{server ? server.name : place}<ChevronDown className="h-3 w-3" /></button>
           : <span className={pill} title={place === 'This Mac' ? 'Runs on this Mac while it is on and awake' : `Runs on ${place}`}><Laptop className="h-3.5 w-3.5" />{place}</span>}
         {mode === 'project' ? projectFolder && <span className={pill} title="This project's folder"><Folder className="h-3.5 w-3.5" />{projectFolder}</span>
-          : canChooseFolder && !server && <button type="button" aria-expanded={menu === 'folder'} onClick={() => setMenu(menu === 'folder' ? false : 'folder')} className={`${pill} hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`} data-testid="work-start-folder" title={folder || 'A new, empty folder for this project'}><Folder className="h-3.5 w-3.5" />{folder ? folderName(folder) : 'New folder'}<ChevronDown className="h-3 w-3" /></button>}
+          : canChooseFolder && !server && <button type="button" aria-expanded={menu === 'folder'} onClick={() => setMenu(menu === 'folder' ? false : 'folder')} className={`${pill} hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`} data-testid="work-start-folder" title={folder || (newFolderParent ? `A new, empty folder in ${newFolderParent}` : 'A new, empty folder for this project')}><Folder className="h-3.5 w-3.5" />{folder ? folderName(folder) : newFolderPlace ? `New folder in ${folderName(newFolderParent)}` : 'New folder'}<ChevronDown className="h-3 w-3" /></button>}
         {model?.display_label && <span className={`${pill} ml-auto`} title="The model a new chat starts on; change it in the chat's message box">{model.display_label}{model.reasoning_effort && <span className="capitalize">{model.reasoning_effort}</span>}</span>}
         {menu === 'place' && <div role="menu" className="absolute bottom-full left-0 z-30 mb-1.5 w-72 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
           <button type="button" role="menuitem" className={item} onClick={() => pickPlace(undefined)}><Laptop className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1">{place}<span className={sub}>Runs on this Mac while it is on and awake</span></span>{!server && <Check className="h-4 w-4 shrink-0" />}</button>
@@ -117,7 +126,7 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
           {servers.map(entry => <button key={entry.id} type="button" role="menuitem" disabled={!entry.online} className={`${item} disabled:opacity-50`} onClick={() => pickPlace(entry)}><Cloud className="h-4 w-4 shrink-0 text-muted-foreground" /><span className="min-w-0 flex-1"><span className="block truncate">{entry.name}</span><span className={sub}>{entry.online ? 'Always on; your team can join' : 'Not reachable right now'}</span></span>{server?.id === entry.id && <Check className="h-4 w-4 shrink-0" />}</button>)}
         </div>}
         {menu === 'folder' && <div role="menu" className="absolute bottom-full left-0 z-30 mb-1.5 w-72 rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl">
-          <button type="button" role="menuitem" className={item} onClick={() => choose(undefined)}><span>New folder<span className={sub}>An empty folder for this project</span></span></button>
+          <button type="button" role="menuitem" className={item} onClick={() => choose(undefined)}><span className="min-w-0 flex-1">Start in a new folder<span className={`${sub} truncate`} title={newFolderParent || undefined}>{newFolderPlace ? `AgentWorks makes it in ${newFolderPlace}` : 'AgentWorks makes an empty folder for this project'}</span></span></button>
           <div className="mx-2 my-1 border-t border-border" />
           <p className="px-3 pb-1 pt-1 text-xs text-muted-foreground">Recent folders</p>
           {recent === null ? <p className="px-3 py-2 text-xs text-muted-foreground"><Loader2 className="mr-1.5 inline h-3 w-3 animate-spin" />Looking…</p>
