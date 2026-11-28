@@ -45,7 +45,8 @@ export function AgentRowLine({ name, title, person, inTeam, setup, place, status
     {grip && <GripVertical aria-hidden="true" className="h-3 w-3 shrink-0 cursor-grab text-muted-foreground" />}
     {person && <PersonInitial name={person} />}
     <span className="block min-w-0 truncate">{name}</span>
-    {inTeam && <AgentInTeamMark on={inTeam.on} share={inTeam.share} className="hidden group-hover:inline-flex group-focus-within:inline-flex" />}
+    {/* A shared agent always shows its Team pill (owner, 28 Nov, replacing hover-only). */}
+    {inTeam && <AgentInTeamMark on={inTeam.on} share={inTeam.share} />}
     <AgentSetupMark setup={setup} />
     {/* Where it runs (owner, 15 Nov); terminal sessions keep their program mark. */}
     <AgentPlaceMark place={place} />
