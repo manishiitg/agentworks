@@ -27,10 +27,10 @@ type CodexBackgroundCommand struct {
 }
 
 type codexRunningCommand struct {
-	id, processID, label, turn string
-	rpc                        *codexRPC
-	startedAt                  time.Time
-	detached                   bool
+	id, processID, label, turn, thread string
+	rpc                                *codexRPC
+	startedAt                          time.Time
+	detached                           bool
 }
 
 type codexCommands struct {
@@ -109,7 +109,7 @@ func observeCodexCommandEvent(s *codexAppSession, r *codexRPC, method string, pa
 	}
 	t.mu.Lock()
 	if _, known := t.running[item.ID]; !known {
-		t.running[item.ID] = &codexRunningCommand{id: item.ID, processID: processID, label: item.Command, turn: event.TurnID, rpc: r, startedAt: time.Now()}
+		t.running[item.ID] = &codexRunningCommand{id: item.ID, processID: processID, label: item.Command, turn: event.TurnID, thread: event.ThreadID, rpc: r, startedAt: time.Now()}
 	}
 	watch := r != nil && !t.watched[r]
 	if watch {
@@ -146,6 +146,59 @@ func (t *codexCommands) detachTurn(turn string) {
 	}
 	if len(detached) > 0 {
 		log.Printf("[CODEX_BACKGROUND] owner=%s action=detached commands=%d turn=%s", t.owner, len(detached), turn)
+		go t.settleExited(detached)
+	}
+}
+
+// settleExited ends the detached commands Codex no longer runs. Codex can
+// start a command and never report it finished, which left it listed as
+// running for good (#4602); its live terminals say which still run. If Codex
+// can't answer, nothing changes.
+func (t *codexCommands) settleExited(detached []*codexRunningCommand) {
+	r := detached[0].rpc
+	if r == nil {
+		return
+	}
+	live := map[string]bool{}
+	ctx, cancel := context.WithTimeout(context.Background(), codexCommandStopTimeout)
+	defer cancel()
+	for cursor := ""; ; {
+		params := map[string]any{"threadId": detached[0].thread}
+		if cursor != "" {
+			params["cursor"] = cursor
+		}
+		var page struct {
+			Data []struct {
+				ProcessID string `json:"processId"`
+			} `json:"data"`
+			NextCursor string `json:"nextCursor"`
+		}
+		if err := r.call(ctx, "thread/backgroundTerminals/list", params, &page); err != nil {
+			log.Printf("[CODEX_BACKGROUND] owner=%s action=settle_skipped reason=%q", t.owner, err.Error())
+			return
+		}
+		for _, terminal := range page.Data {
+			live[terminal.ProcessID] = true
+		}
+		if page.NextCursor == "" || page.NextCursor == cursor {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	var ended []string
+	t.mu.Lock()
+	for _, c := range detached {
+		if !live[c.processID] && t.running[c.id] == c {
+			delete(t.running, c.id)
+			ended = append(ended, c.id)
+		}
+	}
+	t.mu.Unlock()
+	for _, id := range ended {
+		t.output.End(id)
+	}
+	if len(ended) > 0 {
+		log.Printf("[CODEX_BACKGROUND] owner=%s action=settled_exited commands=%d", t.owner, len(ended))
 	}
 }
 
