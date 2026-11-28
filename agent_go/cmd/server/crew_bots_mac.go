@@ -219,6 +219,7 @@ func setMacProjectBot(ctx context.Context, owner, projectID, bot, server string,
 		return true, nil
 	})
 	if err == nil {
+		publishCrewPanelChanged(projectID)
 		log.Printf("[CREW_BOT] mac project=%s bot=%s action=%s", projectID, bot, map[bool]string{true: "add_to_project", false: "remove_from_project"}[add])
 	}
 	return err

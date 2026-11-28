@@ -342,6 +342,7 @@ func setCrewProjectBot(caller, projectID, bot string, add bool) error {
 		return true, nil
 	})
 	if err == nil {
+		publishCrewPanelChanged(projectID) // the right menu's "Bots in this project" reads again, also after an agent's add
 		log.Printf("[CREW_BOT] actor=%s project=%s bot=%s action=%s", caller, projectID, bot, map[bool]string{true: "add_to_project", false: "remove_from_project"}[add])
 	}
 	return err
