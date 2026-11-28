@@ -3607,7 +3607,12 @@ export const useChatStore = create<ChatState>()(
 )
 
 // A server project opened in place (#3383): its chats' requests and streams follow the project's server.
-setRemoteSessionProjectLookup(sessionId => Object.values(useChatStore.getState().chatTabs).find(tab => tab.sessionId === sessionId)?.metadata?.agentProfileProjectId)
+// Your own online agent's tab sits in this Mac project but its chat belongs to its server project, so a request
+// naming this Mac project never follows that chat to the server (#4520: the Mac's agent list then failed).
+setRemoteSessionProjectLookup(sessionId => {
+  const tab = Object.values(useChatStore.getState().chatTabs).find(item => item.sessionId === sessionId)
+  return tab?.metadata?.agentProfileOnlineProject?.id || tab?.metadata?.agentProfileProjectId
+})
 
 if (chatPersistStorage) {
   const flushDurableChatState = () => chatPersistStorage.flush()
