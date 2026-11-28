@@ -19,6 +19,21 @@ LOCAL_SERVER_PRODUCTS=true
 
 # This path is discovery metadata, never a credential. The backend creates the
 # private socket; Electron can reconnect without owning the backend process.
+# start_log_keeping_previous starts a log fresh but keeps the last three starts as .1-.3, like the server
+# log. The Vite log was wiped on every app restart, so a missed file change (28 Nov: the dev server kept
+# an old AgentMessageFrom.tsx after a fast-forward) left no evidence once the app was restarted.
+start_log_keeping_previous() {
+    local path="$1"
+    [ -n "$path" ] || return 0
+    if [ -s "$path" ]; then
+        rm -f "$path.3"
+        [ -f "$path.2" ] && mv "$path.2" "$path.3"
+        [ -f "$path.1" ] && mv "$path.1" "$path.2"
+        mv "$path" "$path.1"
+    fi
+    : > "$path"
+}
+
 configure_desktop_socket() {
     AGENTWORKS_DESKTOP_SOCKET="$(node -e 'const p = require(process.argv[1]); console.log(p.developmentSocketPath(process.argv[2], process.argv[3]))' \
         "${SCRIPT_DIR}/../desktop/lib/devConnection.js" "${SCRIPT_DIR}/.." "$MCP_AGENT_SERVER_URL")" || return 1
@@ -748,8 +763,8 @@ EOF
 
     FRONTEND_LOG_PATH="${LOG_DIR}/frontend_debug.log"
     ELECTRON_LOG_PATH="${LOG_DIR}/electron_debug.log"
-    > "$FRONTEND_LOG_PATH"
-    > "$ELECTRON_LOG_PATH"
+    start_log_keeping_previous "$FRONTEND_LOG_PATH"
+    start_log_keeping_previous "$ELECTRON_LOG_PATH"
 
     if [ ! -f "${FRONTEND_DIR}/package.json" ]; then
         echo "❌ Error: frontend package.json not found: ${FRONTEND_DIR}/package.json"
@@ -787,7 +802,7 @@ EOF
         }
         echo "🚀 Vite Preview Session Started: $(date)" >> "$FRONTEND_LOG_PATH"
     else
-        echo "🚀 Vite Dev Session Started: $(date)" > "$FRONTEND_LOG_PATH"
+        echo "🚀 Vite Dev Session Started: $(date)" >> "$FRONTEND_LOG_PATH"
     fi
     if [ "$BACKGROUND_MODE" = true ]; then
         if [ "$FRONTEND_BUILD_MODE" = true ]; then
@@ -1562,8 +1577,8 @@ fi
 if [ "$WITH_FRONTEND" = true ]; then
     FRONTEND_LOG_PATH="${LOG_DIR}/frontend_debug.log"
     ELECTRON_LOG_PATH="${LOG_DIR}/electron_debug.log"
-    > "$FRONTEND_LOG_PATH"
-    > "$ELECTRON_LOG_PATH"
+    start_log_keeping_previous "$FRONTEND_LOG_PATH"
+    start_log_keeping_previous "$ELECTRON_LOG_PATH"
     dev_detail "✅ Frontend log file truncated: $FRONTEND_LOG_PATH"
     dev_detail "✅ Electron log file truncated: $ELECTRON_LOG_PATH"
 fi
@@ -2111,7 +2126,7 @@ start_frontend_dev() {
         }
         echo "🚀 Vite Preview Session Started: $(date)" >> "$FRONTEND_LOG_PATH"
     else
-        echo "🚀 Vite Dev Session Started: $(date)" > "$FRONTEND_LOG_PATH"
+        echo "🚀 Vite Dev Session Started: $(date)" >> "$FRONTEND_LOG_PATH"
     fi
     echo "=========================================" >> "$FRONTEND_LOG_PATH"
     echo "- Port: $FRONTEND_PORT" >> "$FRONTEND_LOG_PATH"
