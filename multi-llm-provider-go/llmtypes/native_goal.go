@@ -15,6 +15,10 @@ type NativeGoal struct {
 	TimeUsedSeconds *int64 `json:"time_used_seconds,omitempty"`
 	Checks          *int   `json:"checks,omitempty"`
 	LastCheck       string `json:"last_check,omitempty"`
+	// Progress the program reports itself (Muse): percent done, what it works on now and next.
+	PercentComplete *int   `json:"percent_complete,omitempty"`
+	CurrentWork     string `json:"current_work,omitempty"`
+	NextWork        string `json:"next_work,omitempty"`
 }
 
 type NativeGoalUpdate struct {

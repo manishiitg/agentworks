@@ -591,6 +591,10 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 		// The person's "/goal ..." becomes the goal turn's message; goal/set or goal/resume follows once it starts.
 		human = goalText
 		command := goalCommand
+		if command.Action == "set" && current != nil && current.Status != "complete" {
+			// A new /goal while one is set changes its objective (goal/edit); set needs no goal.
+			command.Action = "edit"
+		}
 		s.goalCommand = &command
 	}
 	// Muse has no separate place for instructions: they go in a message, once

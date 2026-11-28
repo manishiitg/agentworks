@@ -8,6 +8,9 @@ export type NativeGoal = {
   time_used_seconds?: number
   checks?: number
   last_check?: string
+  percent_complete?: number
+  current_work?: string
+  next_work?: string
 }
 export type NativeGoalUpdate = { provider: string; native_session_id: string; goal: NativeGoal | null; reason?: string }
 

@@ -17,7 +17,8 @@ import (
 // /goal in a Muse chat uses Muse's own goal (no AgentWorks loop): the goal
 // turn starts, goal/set attaches the goal to it, the chat follows the next
 // turn Muse starts on its own while the goal is active, and Muse's
-// session/goalChanged becomes the chat's goal bar until it says complete.
+// session/goalChanged (with its progress and now/next) becomes the chat's goal
+// bar until it says complete.
 func TestMuseMSPGoalSetsMuseGoalAndFollowsItsTurns(t *testing.T) {
 	toHost, hostIn := io.Pipe()
 	fromHost, hostOut := io.Pipe()
@@ -35,7 +36,7 @@ func TestMuseMSPGoalSetsMuseGoalAndFollowsItsTurns(t *testing.T) {
 		write(map[string]any{"jsonrpc": "2.0", "method": method, "params": params})
 	}
 	goal := func(status string) map[string]any {
-		return map[string]any{"goal": map[string]any{"objective": "make the tests pass", "status": status, "createdAtMs": 1000, "updatedAtMs": 61000}}
+		return map[string]any{"goal": map[string]any{"objective": "make the tests pass", "status": status, "createdAtMs": 1000, "updatedAtMs": 61000, "percentComplete": 60, "currentWork": "fixing the drag test", "nextWork": "rerun the suite"}}
 	}
 	reply := func(turn, id, text string) {
 		note("item/started", map[string]any{"item": map[string]any{"itemId": id, "kind": "agentMessage", "turnId": turn}})
@@ -94,7 +95,8 @@ func TestMuseMSPGoalSetsMuseGoalAndFollowsItsTurns(t *testing.T) {
 	if text := resp.Choices[0].Content; !strings.Contains(text, "first part done") || !strings.Contains(text, "all tests pass") {
 		t.Fatalf("reply = %q", text)
 	}
-	if len(goals) != 2 || goals[0].Status != "active" || goals[1].Status != "complete" || goals[1].TimeUsedSeconds == nil || *goals[1].TimeUsedSeconds != 60 {
+	if len(goals) != 2 || goals[0].Status != "active" || goals[1].Status != "complete" || goals[1].TimeUsedSeconds == nil || *goals[1].TimeUsedSeconds != 60 ||
+		goals[1].PercentComplete == nil || *goals[1].PercentComplete != 60 || goals[1].CurrentWork != "fixing the drag test" || goals[1].NextWork != "rerun the suite" {
 		t.Fatalf("goals = %+v", goals)
 	}
 }
