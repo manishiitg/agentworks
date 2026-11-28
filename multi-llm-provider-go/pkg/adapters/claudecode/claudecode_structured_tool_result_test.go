@@ -187,3 +187,99 @@ func TestClaudeAPIRetryUsesNativeRetryLifecycleWithoutAnswerText(t *testing.T) {
 		t.Fatalf("phases=%v answer=%q", phases, answer.String())
 	}
 }
+
+func observeClaudeFrames(t *testing.T, frames []string) (*claudeStructuredText, []string, []string) {
+	t.Helper()
+	var state claudeStructuredText
+	var reasoning, reply []string
+	for _, frame := range frames {
+		var ev claudeStreamEvent
+		if err := json.Unmarshal([]byte(frame), &ev); err != nil {
+			t.Fatal(err)
+		}
+		state.observe(ev, func(chunk llmtypes.StreamChunk) {
+			switch chunk.Type {
+			case llmtypes.StreamChunkTypeReasoning:
+				reasoning = append(reasoning, chunk.Content)
+			case llmtypes.StreamChunkTypeContent:
+				reply = append(reply, chunk.Content)
+			}
+		})
+	}
+	return &state, reasoning, reply
+}
+
+// T3 Code #41085: Claude 5.1+ writes the note before a tool call (a reply to a
+// steer, a progress line) as a second thinking block. It is reply text.
+func TestClaudeNoteWrittenAsThinkingBeforeToolShowsAsReply(t *testing.T) {
+	frames := func(model, first, after string) []string {
+		return []string{
+			`{"type":"assistant","message":{"id":"m1","model":"` + model + `","content":[{"type":"thinking","thinking":"` + first + `"}]}}`,
+			`{"type":"system","subtype":"thinking_tokens"}`,
+			`{"type":"assistant","message":{"id":"m1","model":"` + model + `","content":[{"type":"thinking","thinking":"Checking the logs now."}]}}`,
+			after,
+		}
+	}
+	tool := `{"type":"assistant","message":{"id":"m1","model":"MODEL","content":[{"type":"tool_use","id":"t1","name":"Bash"}]}}`
+	for _, first := range []string{"", "Working out which log to read."} {
+		state, reasoning, reply := observeClaudeFrames(t, frames("claude-opus-5-5", first, strings.ReplaceAll(tool, "MODEL", "claude-opus-5-5")))
+		if strings.Join(reply, "") != "Checking the logs now." || state.completed.String() != "Checking the logs now." {
+			t.Fatalf("first=%q: note not shown as reply: reply=%q completed=%q", first, reply, state.completed.String())
+		}
+		if strings.Contains(strings.Join(reasoning, "|"), "Checking the logs now.") {
+			t.Fatalf("first=%q: note also shown as reasoning: %q", first, reasoning)
+		}
+	}
+	// Claude 5.0 keeps it as reasoning, and so does a thinking block not followed by a tool call.
+	for name, f := range map[string][]string{
+		"claude 5.0":    frames("claude-opus-5", "", strings.ReplaceAll(tool, "MODEL", "claude-opus-5")),
+		"no tool after": frames("claude-opus-5-5", "", `{"type":"assistant","message":{"id":"m1","model":"claude-opus-5-5","content":[{"type":"text","text":"Done."}]}}`),
+		"turn ends":     frames("claude-opus-5-5", "", `{"type":"result","subtype":"success","result":"Done."}`),
+	} {
+		_, reasoning, reply := observeClaudeFrames(t, f)
+		if strings.Contains(strings.Join(reply, ""), "Checking the logs now.") || !strings.Contains(strings.Join(reasoning, "|"), "Checking the logs now.") {
+			t.Fatalf("%s: reasoning=%q reply=%q", name, reasoning, reply)
+		}
+	}
+	for model, want := range map[string]bool{"claude-opus-5-5": true, "claude-fable-5-2": true, "claude-sonnet-6": true, "claude-opus-5": false, "claude-opus-5-20260101": false, "claude-sonnet-4-6": false, "gpt-6": false} {
+		if got := claudeWritesUpdatesAsThinking(model); got != want {
+			t.Fatalf("%s: got %t", model, got)
+		}
+	}
+}
+
+// T3 Code #27747: a blocking Stop hook makes Claude reply again in the same
+// run, and the run's result holds only that reply. Frames recorded from Claude
+// Code with a Stop hook that blocks once.
+func TestClaudeStopHookKeepsTheAnswerBeforeTheHook(t *testing.T) {
+	state, _, _ := observeClaudeFrames(t, []string{
+		`{"type":"system","subtype":"init"}`,
+		`{"type":"assistant","message":{"id":"m1","model":"claude-haiku-5-5","content":[{"type":"thinking","thinking":""}]}}`,
+		`{"type":"assistant","message":{"id":"m1","model":"claude-haiku-5-5","content":[{"type":"text","text":"17 times 23 is 391."}]}}`,
+		`{"type":"user","isSynthetic":true,"message":{"role":"user","content":[{"type":"text","text":"Stop hook feedback:\nSay the word PINEAPPLE before finishing."}]}}`,
+		`{"type":"assistant","message":{"id":"m2","model":"claude-haiku-5-5","content":[{"type":"text","text":"PINEAPPLE"}]}}`,
+	})
+	hooks := state.takeStopHooks()
+	got := claudeStopHookResult(hooks, "PINEAPPLE")
+	want := "17 times 23 is 391.\n\n_A Stop hook asked Claude to continue: Say the word PINEAPPLE before finishing._\n\nPINEAPPLE"
+	if got != want {
+		t.Fatalf("got %q", got)
+	}
+	if len(state.takeStopHooks()) != 0 {
+		t.Fatal("hooks taken twice")
+	}
+	// A /goal check, a person's own message and a helper's message are not Stop hooks that continued the turn.
+	for _, frame := range []string{
+		`{"type":"user","isSynthetic":true,"message":{"content":[{"type":"text","text":"Stop hook feedback:\n[Ship the fix]: tests still fail"}]}}`,
+		`{"type":"user","message":{"content":[{"type":"text","text":"Stop hook feedback:\nnot from Claude"}]}}`,
+		`{"type":"user","isSynthetic":true,"parent_tool_use_id":"t1","message":{"content":[{"type":"text","text":"Stop hook feedback:\nhelper"}]}}`,
+	} {
+		var ev claudeStreamEvent
+		if err := json.Unmarshal([]byte(frame), &ev); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := claudeStopHookFeedback(ev); ok {
+			t.Fatalf("treated as a Stop hook: %s", frame)
+		}
+	}
+}

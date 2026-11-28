@@ -79,19 +79,22 @@ type claudeStreamEvent struct {
 		} `json:"delta"`
 	} `json:"event,omitempty"`
 
-	ToolUseResult   json.RawMessage            `json:"tool_use_result,omitempty"`
-	ParentToolUseID string                     `json:"parent_tool_use_id,omitempty"`
-	Type            string                     `json:"type"`
-	Subtype         string                     `json:"subtype,omitempty"`
-	Attempt         int                        `json:"attempt,omitempty"`
-	MaxRetries      int                        `json:"max_retries,omitempty"`
-	RetryDelayMS    int64                      `json:"retry_delay_ms,omitempty"`
-	SessionID       string                     `json:"session_id,omitempty"`
-	Message         *claudeStreamMessage       `json:"message,omitempty"`
-	Result          string                     `json:"result,omitempty"`
-	IsError         bool                       `json:"is_error,omitempty"`
-	Usage           *claudeStreamUsage         `json:"usage,omitempty"`
-	ModelUsage      map[string]json.RawMessage `json:"modelUsage,omitempty"`
+	ToolUseResult   json.RawMessage      `json:"tool_use_result,omitempty"`
+	ParentToolUseID string               `json:"parent_tool_use_id,omitempty"`
+	Type            string               `json:"type"`
+	Subtype         string               `json:"subtype,omitempty"`
+	Attempt         int                  `json:"attempt,omitempty"`
+	MaxRetries      int                  `json:"max_retries,omitempty"`
+	RetryDelayMS    int64                `json:"retry_delay_ms,omitempty"`
+	SessionID       string               `json:"session_id,omitempty"`
+	Message         *claudeStreamMessage `json:"message,omitempty"`
+	Result          string               `json:"result,omitempty"`
+	IsError         bool                 `json:"is_error,omitempty"`
+	// isSynthetic marks a user message Claude Code wrote itself, such as a
+	// blocking Stop hook's "Stop hook feedback:".
+	IsSynthetic bool                       `json:"isSynthetic,omitempty"`
+	Usage       *claudeStreamUsage         `json:"usage,omitempty"`
+	ModelUsage  map[string]json.RawMessage `json:"modelUsage,omitempty"`
 	// system/status: "compacting" while compaction runs, null afterwards
 	// with compact_result. system/compact_boundary: compact_metadata.
 	Status          *string                `json:"status,omitempty"`
@@ -975,6 +978,12 @@ func (c *ClaudeCodeInteractiveAdapter) generateContentStructured(ctx context.Con
 					if isClaudeDiagnosticResult(line) {
 						c.logger.Infof("[CLAUDE_SDK] dropped diagnostic result: %s", strings.TrimSpace(line))
 					}
+				}
+				// A Stop hook made Claude carry on after it had answered: its result holds only the reply to the
+				// hook, so put the answer back in front of it (T3 Code #27747).
+				if hooks := text.takeStopHooks(); len(hooks) > 0 && !ev.IsError {
+					ev.Result = claudeStopHookResult(hooks, claudeContinuedResultText("", ev, false))
+					c.logger.Infof("[CLAUDE_SDK] stop hook continued the turn session=%s hooks=%d", sessionID, len(hooks))
 				}
 				resultText = claudeContinuedResultText(resultText, ev, previousResultContinues)
 				if sdkProcess != nil && !ev.IsError && !idleCompact {
