@@ -524,7 +524,8 @@ func withoutAgentWorksFolders(sessions []localProjectNativeSession) []localProje
 	}
 	kept := sessions[:0]
 	for _, session := range sessions {
-		inside := false
+		// A folder inside any project's .agentworks folder is AgentWorks' own (automation runs, uploads).
+		inside := strings.Contains(filepath.ToSlash(session.Folder)+"/", "/.agentworks/")
 		for _, root := range roots {
 			// The Mac's disk ignores letter case: the chat may name the folder in other capitals.
 			if rel, err := filepath.Rel(strings.ToLower(root), strings.ToLower(filepath.Clean(session.Folder))); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
