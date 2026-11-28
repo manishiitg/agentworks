@@ -80,6 +80,7 @@ type continueOnlinePlan struct {
 	team       string
 	macProject string
 	macName    string
+	sourceKey  string // the Mac chat's key: the online agent hangs under it in the Mac's left menu
 }
 
 // handleContinueOnlinePlan is GET /crew-teams/{project}/continue-online?key=<chat key> on the Mac: the readiness check.
@@ -119,6 +120,7 @@ func (api *StreamingAPI) collectContinueOnline(ctx context.Context, userID, macP
 	}
 	plan := &continueOnlinePlan{Chat: firstNonEmptyTrimmed(record.Title, "Main"), macProject: macProject, Repos: []continueOnlineRepo{}, Files: []continueOnlineFile{}, Setup: []continueOnlineFile{}, Skipped: []string{}}
 	plan.macName = continueOnlineProjectName(ctx, record.WorkspacePath, roots)
+	plan.sourceKey = chatKey
 	data, err := ReadChatHistoryConversation(userID, record.SessionID, record.WorkspacePath)
 	if err == nil {
 		var saved struct {
@@ -243,14 +245,24 @@ func continueOnlineCollectFiles(plan *continueOnlinePlan, roots crewroot.Roots) 
 	}
 	repos, toplevel := map[string]*continueOnlineRepo{}, map[string]string{}
 	used, total := map[string]bool{}, int64(0)
+	// Files left behind for the same reason are counted on one line, not listed one by one.
+	overLimit, private := 0, 0
+	defer func() {
+		if private > 0 {
+			plan.Skipped = append(plan.Skipped, continueOnlineCount(private, "file")+" in hidden folders stay on this Mac")
+		}
+		if overLimit > 0 {
+			plan.Skipped = append(plan.Skipped, continueOnlineCount(overLimit, "file")+" over the copy limit stay on this Mac")
+		}
+	}()
 	copyFile := func(path, to string, size int64, list *[]continueOnlineFile) {
 		if len(plan.Files)+len(plan.Setup) >= continueOnlineMaxFiles || total+size > continueOnlineTotalLimit {
-			plan.Skipped = append(plan.Skipped, continueOnlineShow(path, roots)+" (over the copy limit)")
+			overLimit++
 			return
 		}
 		// The server never takes hidden folders or instruction files as project files (workflowfiles.ProtectedWrite).
 		if wf.ProtectedWrite(to) {
-			plan.Skipped = append(plan.Skipped, continueOnlineShow(path, roots)+" (hidden folder or instruction file; the online project keeps those private)")
+			private++
 			return
 		}
 		for n := 2; used[to]; n++ {
@@ -500,7 +512,7 @@ func (api *StreamingAPI) runContinueOnline(ctx context.Context, userID string, p
 	}
 	message := continueOnlineFirstMessage(plan, note, branches, copied, problems)
 	var reply continueOnlineReply
-	err := api.continueOnlineRemote(ctx, userID, plan.conn, plan.team, map[string]any{"project_id": plan.ProjectID, "name": plan.Chat, "source": plan.macName, "message": message, "history": history}, &reply)
+	err := api.continueOnlineRemote(ctx, userID, plan.conn, plan.team, map[string]any{"project_id": plan.ProjectID, "name": plan.Chat, "source": plan.macName, "source_key": plan.sourceKey, "message": message, "history": history}, &reply)
 	if err != nil {
 		return nil, fmt.Errorf("the online agent could not be started: %s", laptopActionErrorText(err.Error()))
 	}
@@ -620,6 +632,7 @@ func (api *StreamingAPI) handleContinueFromMac(w http.ResponseWriter, r *http.Re
 		ChatID    string                    `json:"chat_id"`
 		Name      string                    `json:"name"`
 		Source    string                    `json:"source"`
+		SourceKey string                    `json:"source_key"`
 		Message   string                    `json:"message"`
 		History   []llmtypes.MessageContent `json:"history"`
 	}
@@ -686,7 +699,12 @@ func (api *StreamingAPI) handleContinueFromMac(w http.ResponseWriter, r *http.Re
 			}
 		}
 		note := continueOnlineFirstTurnNote(name, firstNonEmptyTrimmed(in.Source, "the Mac project"))
-		if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, claims.UserID, crewProfileID, key, chatContextChange{ForkNote: &note}, claims.UserID); err != nil {
+		// The Mac chat it came from is its parent, so the Mac's left menu shows it under that chat.
+		change := chatContextChange{ForkNote: &note}
+		if source := strings.TrimSpace(in.SourceKey); source != "" {
+			change.ForkedFrom = &source
+		}
+		if _, err := defaultProductConversationRegistryStore().setChatContextOptions(ctx, claims.UserID, crewProfileID, key, change, claims.UserID); err != nil {
 			log.Printf("[CONTINUE_ONLINE] team=%s project=%s chat=%s event=note_failed", team, project, chatID)
 		}
 	}
@@ -740,4 +758,12 @@ func (api *StreamingAPI) continueOnlineTurn(ctx context.Context, userID, key, te
 
 func continueOnlineFirstTurnNote(agentName, source string) string {
 	return fmt.Sprintf("[This chat is %q, which continues the person's own chat from their Mac project %q. The conversation above is theirs: those replies were written by the agent on the Mac, and you now carry on its work here on the server, where it keeps running with the Mac closed. You do not share files with the Mac: work on the copies and branches the handoff names.]", agentName, source)
+}
+
+// continueOnlineCount says "1 file" or "7 files".
+func continueOnlineCount(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
