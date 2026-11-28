@@ -242,6 +242,19 @@ func (api *StreamingAPI) externalCrewCall(w http.ResponseWriter, r *http.Request
 		isCrew := call.TargetKind == triggerCallerCrew && call.TargetChat == ""
 		targetID := call.TargetID
 		call.mu.Unlock()
+		if !isCrew && mine && crewBotWorkflowCallReadable(claims, call) {
+			if name == "project_functions_reply" {
+				replyFunctionCallInput(w, call, str("request_id"), str("response"))
+				return
+			}
+			out := externalWorkflowCallResponse(ctx, call, externalCrewWait(args))
+			out["can_reply"] = true
+			if !api.externalFunctionReadDetails(w, ctx, args, call, out) {
+				return
+			}
+			externalJSON(w, out)
+			return
+		}
 		if !isCrew || (claims.AccessToken != nil && !claims.AccessToken.AllowsCrew(workspaceTokenProjectID(targetID))) {
 			externalError(w, 404, "not_found", "Function call not found.")
 			return

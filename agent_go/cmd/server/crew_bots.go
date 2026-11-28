@@ -138,6 +138,68 @@ type crewBotFunction struct {
 	Name        string         `json:"name"`
 	Description string         `json:"description,omitempty"`
 	InputSchema map[string]any `json:"input_schema,omitempty"`
+	// Workflow names the project workflow this function runs, for a workflow function.
+	Workflow string `json:"workflow,omitempty"`
+}
+
+// crewBotOffer is one function a bot may offer. Workflow is set for a function of one of the project's workflows: a
+// call through the bot runs that workflow with typed inputs, no agent turn in between (owner, 28 Nov).
+type crewBotOffer struct {
+	fn       crewFunction
+	workflow *triggerTarget
+}
+
+func (o crewBotOffer) view(schema bool) crewBotFunction {
+	out := crewBotFunction{Name: o.fn.Name, Description: o.fn.Description}
+	if schema {
+		out.InputSchema = o.fn.InputSchema
+	}
+	if o.workflow != nil {
+		out.Workflow = o.workflow.Label
+	}
+	return out
+}
+
+// crewBotOffers lists what a bot of the project at root may offer besides Ask: the project's agent functions, then the
+// functions of each of its workflows. A workflow function whose name is already taken is left out (logged), since
+// callers name a bot function by its name alone.
+func crewBotOffers(ctx context.Context, rec projectOwnerRecord, root string) []crewBotOffer {
+	out := []crewBotOffer{}
+	taken := map[string]bool{"ask": true}
+	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
+	if functions, err := readCrewFunctions(ctx, target); err == nil {
+		for _, fn := range offeredCrewFunctions(ctx, target, functions) {
+			if !taken[fn.Name] {
+				taken[fn.Name] = true
+				out = append(out, crewBotOffer{fn: fn})
+			}
+		}
+	}
+	for _, binding := range crewWorkflowsOf(root) {
+		manifest, found, err := ReadWorkflowManifest(ctx, binding.Root)
+		if err != nil || !found || manifest == nil {
+			continue
+		}
+		workflow := &triggerTarget{Kind: triggerCallerWorkflow, Path: binding.Root, Label: firstNonEmptyTrimmed(manifest.Label, "Workflow"), Manifest: manifest}
+		for _, fn := range workflowFunctions(manifest) {
+			if taken[fn.Name] {
+				log.Printf("[CREW_BOT] project=%s workflow=%s function=%s action=offer result=name_taken", rec.ProjectID, manifest.ID, fn.Name)
+				continue
+			}
+			taken[fn.Name] = true
+			out = append(out, crewBotOffer{fn: fn, workflow: workflow})
+		}
+	}
+	return out
+}
+
+func findCrewBotOffer(offers []crewBotOffer, name string) (crewBotOffer, bool) {
+	for _, o := range offers {
+		if o.fn.Name == strings.TrimSpace(name) {
+			return o, true
+		}
+	}
+	return crewBotOffer{}, false
 }
 
 type crewBotView struct {
@@ -167,14 +229,9 @@ func crewBotFunctionsFor(ctx context.Context, rec projectOwnerRecord, root strin
 	if len(bot.Functions) == 0 {
 		return out
 	}
-	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
-	functions, err := readCrewFunctions(ctx, target)
-	if err != nil {
-		return out
-	}
-	for _, fn := range offeredCrewFunctions(ctx, target, functions) {
-		if fn.Name != "ask" && containsID(bot.Functions, fn.Name) {
-			out = append(out, crewBotFunction{Name: fn.Name, Description: fn.Description, InputSchema: fn.InputSchema})
+	for _, offer := range crewBotOffers(ctx, rec, root) {
+		if containsID(bot.Functions, offer.fn.Name) {
+			out = append(out, offer.view(true))
 		}
 	}
 	return out
@@ -433,13 +490,8 @@ func applyCrewBotChange(ctx context.Context, caller string, change crewBotChange
 		bot = crewBot{Maker: caller, Since: time.Now().UTC().Format(time.RFC3339), Icon: "🤖"}
 		// A new bot offers every function the project offers (owner, 28 Nov); the maker unticks what they keep back.
 		if change.Functions == nil {
-			target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
-			if functions, err := readCrewFunctions(ctx, target); err == nil {
-				for _, fn := range offeredCrewFunctions(ctx, target, functions) {
-					if fn.Name != "ask" && !containsID(bot.Functions, fn.Name) {
-						bot.Functions = append(bot.Functions, fn.Name)
-					}
-				}
+			for _, offer := range crewBotOffers(ctx, rec, root) {
+				bot.Functions = append(bot.Functions, offer.fn.Name)
 			}
 		}
 	}
@@ -492,14 +544,13 @@ func applyCrewBotChange(ctx context.Context, caller string, change crewBotChange
 		bot.Teams = teams
 	}
 	if change.Functions != nil {
-		target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
-		functions, _ := readCrewFunctions(ctx, target)
+		offers := crewBotOffers(ctx, rec, root)
 		names := []string{}
 		for _, name := range *change.Functions {
 			if name == "ask" {
 				continue
 			}
-			if _, found := findCrewFunction(offeredCrewFunctions(ctx, target, functions), name); !found {
+			if _, found := findCrewBotOffer(offers, name); !found {
 				return nil, fmt.Errorf("The project has no function %q.", name)
 			}
 			if !containsID(names, name) {
@@ -634,13 +685,9 @@ func crewBotState(ctx context.Context, caller, root, key string) (map[string]any
 	if err != nil {
 		return nil, err
 	}
-	target := triggerTarget{Kind: triggerCallerCrew, Path: root, CrewID: rec.ProjectID, CrewProfile: rec.Product, CrewOwner: rec.OwnerID}
-	functions, _ := readCrewFunctions(ctx, target)
 	available := []crewBotFunction{}
-	for _, fn := range offeredCrewFunctions(ctx, target, functions) {
-		if fn.Name != "ask" {
-			available = append(available, crewBotFunction{Name: fn.Name, Description: fn.Description})
-		}
+	for _, offer := range crewBotOffers(ctx, rec, root) {
+		available = append(available, offer.view(false))
 	}
 	people := []map[string]string{}
 	bot, on := rec.Bots[key]
@@ -704,13 +751,60 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 	if args == nil {
 		args = map[string]any{}
 	}
+	ctx := context.WithValue(r.Context(), crewBotCallKey{}, botID)
+	if offer, found := findCrewBotOffer(crewBotOffers(ctx, rec, root), function); found && offer.workflow != nil {
+		api.crewBotWorkflowCall(w, ctx, *offer.workflow, offer.fn, args, submissionID)
+		return
+	}
 	req := httptest.NewRequest(http.MethodPost, "/api/external/call", nil)
-	req = req.WithContext(context.WithValue(r.Context(), crewBotCallKey{}, botID))
+	req = req.WithContext(ctx)
 	rec2 := httptest.NewRecorder()
 	api.externalCrewCall(rec2, req, "project_functions_call", map[string]any{"crew_id": projectID, "function": function, "input": args, "submission_id": submissionID, "wait_seconds": float64(20)})
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(rec2.Code)
 	_, _ = w.Write(rec2.Body.Bytes())
+}
+
+// crewBotWorkflowCall runs a project workflow's function for someone a bot admits, as that person: the function's own
+// caller list still decides, the call and its cost are theirs, and the workflow runs with typed inputs, no agent turn
+// in between. Being admitted by the bot is the access; the caller is not given the workflow itself.
+func (api *StreamingAPI) crewBotWorkflowCall(w http.ResponseWriter, ctx context.Context, target triggerTarget, fn crewFunction, args map[string]any, submissionID string) {
+	claims := GetUserFromContext(ctx)
+	if claims == nil {
+		externalError(w, 401, "unauthorized", "Sign in again to use this bot.")
+		return
+	}
+	if token := claims.AccessToken; token != nil && !token.Allows("runs:execute") {
+		externalError(w, 403, "forbidden", "This connection cannot run functions.")
+		return
+	}
+	schedule, err := findWorkflowFunctionTrigger(target.Manifest, fn.Name)
+	if err != nil || !sharedFunctionCallerAllowed(target.Manifest, schedule.Function, externalCrewCaller(claims).Stamp) {
+		externalError(w, 403, "forbidden", "This function does not allow you to call it.")
+		return
+	}
+	call, err := api.startCrewFunctionCall(context.WithoutCancel(ctx), claims.UserID, externalCrewCaller(claims), target, fn, args, externalCrewCallTimeout, submissionID)
+	if err != nil {
+		externalError(w, 400, "call_refused", err.Error())
+		return
+	}
+	externalJSON(w, externalWorkflowCallResponse(ctx, call, 20*time.Second))
+}
+
+// crewBotWorkflowCallReadable: a workflow call made through a bot is read (functions action=status) by its caller while
+// the bot still admits them and the connection may use the bot's project.
+func crewBotWorkflowCallReadable(claims *UserClaims, call *crewFunctionCall) bool {
+	call.mu.Lock()
+	bot, kind := call.BotAgent, call.TargetKind
+	call.mu.Unlock()
+	if bot == "" || kind != triggerCallerWorkflow {
+		return false
+	}
+	rec, ok := crewBotRecordByID(bot)
+	if !ok || !crewBotAdmits(rec, bot, sanitizeUserIDForPath(claims.UserID)) {
+		return false
+	}
+	return claims.AccessToken == nil || claims.AccessToken.AllowsCrew(workspaceTokenProjectID(rec.ProjectID))
 }
 
 // handleCrewBots serves the Bots page and the maker's bot card:
@@ -835,7 +929,7 @@ const externalBotsTool = "bots"
 
 func externalBotsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and functions; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read (inbox_id) returns its answer (the same as messages action=read). call (bot, function, input): call one of its functions by name; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions other agents may call by name. add / remove (crew_id, bot): put a bot shared with you into one of your projects (on the server: its owner or a co-owner; or a project on your Mac, from any server it is signed in to), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
+	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and functions; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read (inbox_id) returns its answer (the same as messages action=read). call (bot, function, input): call one of its functions by name; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions other agents may call by name, its workflows' functions included (a call runs that workflow). add / remove (crew_id, bot): put a bot shared with you into one of your projects (on the server: its owner or a co-owner; or a project on your Mac, from any server it is signed in to), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
 		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "read", "call", "get", "set", "add", "remove"}},
 		"bot":           externalString("ask, call, add, remove: the bot's id from list."),
 		"message":       externalString("ask: your message."),

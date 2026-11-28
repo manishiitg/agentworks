@@ -110,6 +110,7 @@ export function BotCard({ workspace, agentKey, onAsk, onSummary }: { workspace: 
         <p className="text-[11px] text-muted-foreground">People just chat with the bot. Their agents, in a project the bot was added to or over MCP, can also call these.</p>
         {state.available_functions.map(fn => <div key={fn.name} className="rounded-lg border border-border px-2 py-1.5">
           <div className="flex items-center gap-2"><code className="min-w-0 flex-1 truncate font-semibold">{fn.name}</code>
+            {fn.workflow && <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground" title="Runs this project workflow">Workflow · {fn.workflow}</span>}
             <Switch on={state.functions.includes(fn.name)} disabled={busy} label={`Let other agents call ${fn.name}`}
               onChange={on => void change({ functions: on ? [...state.functions, fn.name] : state.functions.filter(name => name !== fn.name) })} /></div>
           {fn.description && <p className="text-[11px]">{fn.description}</p>}

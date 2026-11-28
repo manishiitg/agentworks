@@ -22,7 +22,7 @@ export function botsServers(): BotServer[] | undefined {
 const projectConnection = (projectId: string) => isLocalDeployment() ? remoteProjectConnection(projectId) : undefined
 
 /** A function of a bot: other agents call it by name ("ask", its chat, is always first). */
-export type BotFunction = { name: string; description?: string; input_schema?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] } }
+export type BotFunction = { name: string; description?: string; /** The project workflow it runs, for a workflow function. */ workflow?: string; input_schema?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] } }
 
 /** A bot as GET /api/bots lists it (#4545). The server decides who sees which bot. */
 export type Bot = AvatarFields & {
