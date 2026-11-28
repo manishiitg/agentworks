@@ -6,20 +6,20 @@ import { openProjectInPlace } from '../../../utils/openProjectInPlace'
 import { getRawActiveWorkspaceId } from '../../../utils/desktopConnection'
 import { remoteProjectConnection } from '../../../utils/remoteSessions'
 import { WorkingTipsContext } from '../../../components/chat/workingTipsContext'
-import { BOTS_CHANGED_EVENT, botError, botsServer, callBot, listBots, setProjectBot, type Bot, type BotFunction, type BotProject } from './botsApi'
+import { BOTS_CHANGED_EVENT, botError, callBot, listBots, setProjectBot, type Bot, type BotFunction, type BotProject } from './botsApi'
 import { useBotsPageStore, type BotChatFrom } from './botsPageStore'
 
 const ChatArea = lazy(() => import('../../../components/ChatArea'))
 
-/** The bots shared with you and your projects you can add them to, read again whenever bots change. */
+/** The bots shared with you, each with your projects you can add it to, read again whenever bots change. */
 function useBots() {
-  const [state, setState] = useState<{ bots: Bot[] | null; targets: BotProject[]; error: string }>({ bots: null, targets: [], error: '' })
+  const [state, setState] = useState<{ bots: Bot[] | null; error: string }>({ bots: null, error: '' })
   const [retry, setRetry] = useState(0)
   useEffect(() => {
     let cancelled = false
     const load = () => {
-      void listBots().then(({ bots, addTargets }) => { if (!cancelled) setState({ bots, targets: addTargets, error: '' }) })
-        .catch(reason => { if (!cancelled) setState({ bots: [], targets: [], error: botError(reason, 'Could not load bots.') }) })
+      void listBots().then(bots => { if (!cancelled) setState({ bots, error: '' }) })
+        .catch(reason => { if (!cancelled) setState({ bots: [], error: botError(reason, 'Could not load bots.') }) })
     }
     load()
     window.addEventListener(BOTS_CHANGED_EVENT, load)
@@ -28,16 +28,27 @@ function useBots() {
   return { ...state, retry: () => setRetry(value => value + 1) }
 }
 
-/** Open one of your projects in place: a project on this Mac here, a server project on its server (from a Mac,
- * through its sign-in). */
-function openBotProject(projectId: string, mac?: boolean) {
-  const connection = mac ? getRawActiveWorkspaceId() : remoteProjectConnection(projectId) ?? botsServer()?.id ?? getRawActiveWorkspaceId()
+/** Open one of your projects in place: a server project on its server (from a Mac, through that server's sign-in),
+ * a project on this Mac here. */
+function openBotProject(projectId: string, server?: string) {
+  const connection = remoteProjectConnection(projectId) ?? server ?? getRawActiveWorkspaceId()
   openProjectInPlace(connection, { surface: 'work', id: projectId })
 }
 
 /** Open a bot's chat as used in a project it was added to; Back returns to that project. */
-function openInProject(bot: string, project: BotProject) {
-  useBotsPageStore.getState().openChat(bot, { projectId: project.project_id, title: project.title, mac: project.mac })
+function openInProject(bot: Bot, project: BotProject) {
+  useBotsPageStore.getState().openChat(bot.id, { projectId: project.project_id, title: project.title, server: project.mac ? undefined : bot.server?.id })
+}
+
+/** On a Mac, bots grouped by the server they are on, in the order the servers come; on the website, one group. */
+function byServer(bots: Bot[]): { name: string; bots: Bot[] }[] {
+  const groups: { name: string; bots: Bot[] }[] = []
+  for (const bot of bots) {
+    const name = bot.server?.name ?? ''
+    const group = groups.find(item => item.name === name)
+    if (group) group.bots.push(bot); else groups.push({ name, bots: [bot] })
+  }
+  return groups
 }
 
 /**
@@ -54,14 +65,15 @@ export default function BotsPage() {
 
 function BotsDirectory() {
   const close = useBotsPageStore(state => state.setOpen)
-  const { bots, targets, error, retry } = useBots()
-  const server = botsServer()
+  const { bots, error, retry } = useBots()
+  const groups = bots ? byServer(bots) : []
+  const onMac = groups.some(group => group.name)
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border px-4">
       <BotIcon aria-hidden="true" className="h-4 w-4" />
       <h1 className="text-sm font-semibold">Bots</h1>
       {bots && bots.length > 0 && <span className="rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">{bots.length}</span>}
-      <span className="truncate text-xs text-muted-foreground">Shared agents at your company{server ? `, on ${server.name}` : ''}</span>
+      <span className="truncate text-xs text-muted-foreground">Shared agents at your company</span>
       <button type="button" aria-label="Close Bots" onClick={() => close(false)} className="ml-auto grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><X aria-hidden="true" className="h-4 w-4" /></button>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -74,10 +86,13 @@ function BotsDirectory() {
         <p className="mt-2 text-xs text-muted-foreground">Made an agent yourself? Open its menu in a project on the server and turn on Bot.</p>
       </div>}
       {bots && bots.length > 0 && <>
-        <p className="mb-3 text-sm text-muted-foreground">Add a bot to one of your projects to use it there, or reach it from your own AI apps.{server ? ` Add to a project lists your projects on this Mac and on ${server.name}.` : ''}</p>
-        <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
-          {bots.map(bot => <DirectoryCard key={bot.id} bot={bot} targets={targets.filter(target => target.project_id !== bot.project_id)} />)}
-        </div>
+        <p className="mb-3 text-sm text-muted-foreground">Add a bot to one of your projects to use it there, or reach it from your own AI apps.{onMac ? ' Add to a project lists your projects on this Mac and on the bot\'s server.' : ''}</p>
+        {groups.map(group => <section key={group.name} aria-label={group.name || undefined} className="mb-5">
+          {group.name && <h2 className="mb-2 flex items-center gap-1.5 text-xs font-semibold">{group.name}<span className="rounded-full bg-muted px-1.5 text-[11px] font-normal text-muted-foreground">{group.bots.length}</span></h2>}
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
+            {group.bots.map(bot => <DirectoryCard key={bot.id} bot={bot} targets={(bot.add_targets ?? []).filter(target => target.project_id !== bot.project_id)} />)}
+          </div>
+        </section>)}
       </>}
     </div>
   </div>
@@ -106,7 +121,7 @@ function DirectoryCard({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
       {bot.mine ? <>
         <p className="text-[11px] text-muted-foreground">Yours, from {bot.project_title}. Change it from the agent's menu there. People you shared it with see it here.</p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => openBotProject(bot.project_id)} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {bot.project_title}</button>
+          <button type="button" onClick={() => openBotProject(bot.project_id, bot.server?.id)} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {bot.project_title}</button>
           <McpButton open={mcp} toggle={() => setMcp(!mcp)} />
         </div>
       </> : <AddOrOpen bot={bot} targets={targets} inProjects={inProjects} mcp={<McpButton open={mcp} toggle={() => setMcp(!mcp)} />} />}
@@ -136,9 +151,9 @@ function AddOrOpen({ bot, targets, inProjects, mcp }: { bot: Bot; targets: BotPr
   const change = async (project: BotProject, add: boolean) => {
     setBusy(true); setError('')
     try {
-      await setProjectBot(project.project_id, bot.id, add)
+      await setProjectBot(project.project_id, bot.id, add, bot.server)
       setPick('')
-      if (add) openInProject(bot.id, project)
+      if (add) openInProject(bot, project)
     } catch (reason) { setError(botError(reason, 'Could not change it.')) } finally { setBusy(false) }
   }
   const picked = choices.find(target => target.project_id === pick)
@@ -151,7 +166,7 @@ function AddOrOpen({ bot, targets, inProjects, mcp }: { bot: Bot; targets: BotPr
       <p className="text-[11px] text-muted-foreground">Open it in {inProjects.length === 1 ? `${inProjects[0].title}'s` : 'the project\'s'} agent list to use it.</p>
     </div> : <p className="text-[11px] text-muted-foreground">{targets.length ? 'To use it, add it to one of your projects. It shows in that project\'s agent list.' : 'To use it, add it to one of your projects. You have none yet: make one, then come back.'}</p>}
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
-      {inProjects.length > 0 && <button type="button" onClick={() => openInProject(bot.id, inProjects[0])} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {inProjects[0].title}</button>}
+      {inProjects.length > 0 && <button type="button" onClick={() => openInProject(bot, inProjects[0])} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {inProjects[0].title}</button>}
       {choices.length > 0 && <span className="flex min-w-0 gap-1">
         <select aria-label={`Add ${bot.name} to a project`} value={pick} onChange={event => setPick(event.target.value)} className="min-w-0 max-w-[10rem] rounded-md border border-input bg-background px-1 py-1 text-xs">
           <option value="">{inProjects.length ? 'Add to another…' : 'Add to a project…'}</option>
@@ -179,7 +194,7 @@ function BotChatPage({ botId, from }: { botId: string; from: BotChatFrom | null 
   const back = from?.title ? `Back to ${from.title}` : 'Back to the project'
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex min-h-12 shrink-0 items-center gap-2.5 border-b border-border px-3 py-1.5">
-      <button type="button" aria-label={back} title={back} onClick={() => { if (from) openBotProject(from.projectId, from.mac); close(false) }} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
+      <button type="button" aria-label={back} title={back} onClick={() => { if (from) openBotProject(from.projectId, from.server); close(false) }} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
       <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-base">{bot?.icon || '🤖'}</span>
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-semibold">{bot?.name ?? 'Bot'}</h1>
@@ -206,17 +221,17 @@ function BotChat({ bot }: { bot: Bot }) {
   useEffect(() => {
     let cancelled = false
     setTabId(null); setError('')
-    if (viewer) void openProjectAskConversation({ workspacePath: bot.workspace, projectId: bot.project_id }, { activate: false, agentKey: bot.id, connection: botsServer()?.id })
+    if (viewer) void openProjectAskConversation({ workspacePath: bot.workspace, projectId: bot.project_id }, { activate: false, agentKey: bot.id, connection: bot.server?.id })
       .then(id => { if (!cancelled) setTabId(id) })
       .catch(reason => { if (!cancelled) setError(reason instanceof Error ? reason.message : botError(reason, 'Could not open the chat.')) })
     return () => { cancelled = true }
-  }, [bot.id, bot.workspace, bot.project_id, viewer, retry])
+  }, [bot.id, bot.workspace, bot.project_id, bot.server?.id, viewer, retry])
   const buttons = bot.functions.filter(fn => fn.name !== 'ask')
   const intro = <div className="mx-auto max-w-xl p-6 text-sm text-muted-foreground">
     <p>{bot.purpose || 'Ask it anything.'}</p>
     <p className="mt-1 text-xs">Only you see this chat. It runs with {bot.project_title}'s setup and its cost is yours; you can't see that project's files.</p>
   </div>
-  const top = buttons.length > 0 ? <div className="flex flex-wrap gap-1.5 px-4 pb-1.5 pt-1">{buttons.map(fn => <BotButton key={fn.name} bot={bot.id} fn={fn} />)}</div> : null
+  const top = buttons.length > 0 ? <div className="flex flex-wrap gap-1.5 px-4 pb-1.5 pt-1">{buttons.map(fn => <BotButton key={fn.name} bot={bot} fn={fn} />)}</div> : null
   return <section aria-label={`Chat with ${bot.name}`} className="flex min-h-0 flex-1 flex-col">
     {tabId ? <WorkingTipsContext.Provider value={false}><Suspense fallback={<p role="status" className="p-4 text-sm">Opening chat…</p>}><ChatArea tabId={tabId} compact hideHeader previousChatsWorkspacePath={bot.workspace} landingContent={intro} composerTop={top} composerPlaceholder={`Ask ${bot.name}…`} /></Suspense></WorkingTipsContext.Provider>
       : <div className="p-4 text-sm text-muted-foreground"><p role="status">{error || 'Opening chat…'}</p>{error && <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 underline">Try again</button>}</div>}
@@ -224,7 +239,7 @@ function BotChat({ bot }: { bot: Bot }) {
 }
 
 /** One of the bot's functions as a button above the chat box, with a small form when it takes input. */
-function BotButton({ bot, fn }: { bot: string; fn: BotFunction }) {
+function BotButton({ bot, fn }: { bot: Bot; fn: BotFunction }) {
   const fields = Object.entries(fn.input_schema?.properties ?? {})
   const [open, setOpen] = useState(false)
   const [values, setValues] = useState<Record<string, string>>({})
