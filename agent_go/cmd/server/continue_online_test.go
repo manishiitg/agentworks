@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -37,5 +38,54 @@ func TestContinueOnlineNeverCopiesEnvFiles(t *testing.T) {
 	}
 	if len(plan.Skipped) != 2 {
 		t.Fatalf("skipped = %v, want both .env files named as not copied", plan.Skipped)
+	}
+}
+
+// The pushed branch carries only the chat's own uncommitted files on top of HEAD: other uncommitted work in the same
+// folder stays on the Mac (it was about to go along with an unrelated edit, #4520).
+func TestContinueOnlineBranchHasOnlyTheChatsFiles(t *testing.T) {
+	root := t.TempDir()
+	git := func(args ...string) string {
+		out, err := continueOnlineGitErr(root, 30*time.Second, args...)
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return out
+	}
+	git("init", "-q")
+	git("config", "user.email", "owner@example.com")
+	git("config", "user.name", "Owner")
+	git("remote", "add", "origin", "https://example.com/repo.git")
+	for _, name := range []string{"chat.txt", "other.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("old\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("add", ".")
+	git("commit", "-q", "-m", "base")
+	for _, name := range []string{"chat.txt", "other.txt"} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte("new\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	plan := &continueOnlinePlan{Chat: "Fix", Skipped: []string{}, history: []llmtypes.MessageContent{{Role: llmtypes.ChatMessageTypeAI, Parts: []llmtypes.ContentPart{
+		llmtypes.ToolCall{ID: "1", Type: "function", FunctionCall: &llmtypes.FunctionCall{Name: "Edit", Arguments: `{"file_path":"` + filepath.Join(root, "chat.txt") + `"}`}},
+	}}}}
+	continueOnlineCollectFiles(plan, crewroot.Roots{Files: t.TempDir()})
+	if len(plan.Repos) != 1 || plan.Repos[0].Changed != 1 {
+		t.Fatalf("repos = %+v, want the repository with the chat's one changed file", plan.Repos)
+	}
+	sha, err := continueOnlineSnapshot(plan.Repos[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := git("show", sha+":chat.txt"); got != "new" {
+		t.Fatalf("chat.txt on the branch = %q, want the chat's change", got)
+	}
+	if got := git("show", sha+":other.txt"); got != "old" {
+		t.Fatalf("other.txt on the branch = %q, want it untouched", got)
+	}
+	if git("status", "--porcelain", "--", "other.txt") == "" {
+		t.Fatal("the folder's own uncommitted change was lost")
 	}
 }

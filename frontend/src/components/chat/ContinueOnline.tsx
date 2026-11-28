@@ -7,7 +7,7 @@ import { sendToTab } from '../../utils/agentPurposeDraft'
 /** What the Mac says would move (continue_online.go continueOnlinePlan); the dialog only shows it. */
 type ContinueOnlinePlan = {
   server: string; project_name: string; new_project: boolean; chat: string; messages: number
-  repos: { name: string; branch: string; changed: number }[]
+  repos: { name: string; branch: string; changed: number; unpushed: number }[]
   files: { path: string; to: string }[]
   setup: { path: string; to: string }[]
   skipped: string[]; problem?: string; ready: boolean
@@ -46,7 +46,7 @@ export function ContinueOnlineDialog({ project, chatKey, tabId, name, close }: {
         <div className="text-xs">
           <p className="pb-1 font-medium">Copied</p>
           <div className={row}><span>Conversation</span><span className="text-muted-foreground">{plan.messages} messages</span></div>
-          {plan.repos.map(repo => <div key={repo.name} className={row}><span>{repo.name}</span><span className="min-w-0 truncate text-right text-muted-foreground">{repo.changed} changed files → branch {repo.branch}</span></div>)}
+          {plan.repos.map(repo => <div key={repo.name} className={row}><span>{repo.name}</span><span className="min-w-0 truncate text-right text-muted-foreground">{[repo.changed ? `${repo.changed} changed files` : '', repo.unpushed ? `${repo.unpushed} unpushed commits` : ''].filter(Boolean).join(', ')} → branch {repo.branch}</span></div>)}
           {plan.files.length > 0 && <div className={row}><span>Files</span><span className="min-w-0 text-right text-muted-foreground">{plan.files.length} into from-mac/</span></div>}
           {plan.setup.length > 0 && <div className={row}><span>Instructions, memory, skills</span><span className="text-muted-foreground">{plan.setup.length} files</span></div>}
           <div className={row}><span>Keys</span><span className="text-right text-muted-foreground">named in the handoff note; add them to the online project’s vault</span></div>

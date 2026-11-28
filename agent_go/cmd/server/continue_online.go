@@ -49,11 +49,14 @@ type continueOnlineFile struct {
 }
 
 type continueOnlineRepo struct {
-	Root    string `json:"-"`
-	Name    string `json:"name"`
-	Origin  string `json:"origin,omitempty"`
-	Branch  string `json:"branch"`
-	Changed int    `json:"changed"`
+	Root   string `json:"-"`
+	Name   string `json:"name"`
+	Origin string `json:"origin,omitempty"`
+	Branch string `json:"branch"`
+	// Changed: the chat's own files with changes not yet committed; Unpushed: commits not on any remote yet.
+	Changed  int `json:"changed"`
+	Unpushed int `json:"unpushed"`
+	files    []string
 }
 
 // continueOnlinePlan is what the dialog shows and what the move copies; the Mac decides it, the browser only shows it.
@@ -125,8 +128,17 @@ func (api *StreamingAPI) collectContinueOnline(ctx context.Context, userID, macP
 			plan.history = saved.History
 		}
 	}
-	plan.Messages = len(plan.history)
-	if plan.Messages == 0 {
+	for _, message := range plan.history {
+		if role := string(message.Role); role == "human" || role == "user" || role == "ai" || role == "assistant" {
+			for _, part := range message.Parts {
+				if text, ok := part.(llmtypes.TextContent); ok && strings.TrimSpace(text.Text) != "" {
+					plan.Messages++ // the person's and the agent's messages, not tool steps
+					break
+				}
+			}
+		}
+	}
+	if len(plan.history) == 0 {
 		plan.Problem = "This chat has no saved conversation yet. Send it a message first."
 	}
 	api.continueOnlineDestination(ctx, plan)
@@ -275,7 +287,10 @@ func continueOnlineCollectFiles(plan *continueOnlinePlan, roots crewroot.Roots) 
 					repos[top] = repo
 				}
 				if repo.Origin != "" {
-					repo.Changed++
+					repo.files = append(repo.files, rel)
+					if continueOnlineGit(top, "status", "--porcelain", "--", rel) != "" {
+						repo.Changed++
+					}
 					continue
 				}
 				// No origin to push to: the file is copied like any other.
@@ -287,8 +302,14 @@ func continueOnlineCollectFiles(plan *continueOnlinePlan, roots crewroot.Roots) 
 		}
 		copyFile(path, to, info.Size(), &plan.Files)
 	}
+	// A repository goes along only when the chat's own work in it is not on the remote yet: its changed files, or
+	// commits not pushed anywhere. Work already pushed is reachable online as it is.
 	for _, repo := range repos {
-		if repo.Origin != "" {
+		if repo.Origin == "" {
+			continue
+		}
+		_, _ = fmt.Sscan(continueOnlineGit(repo.Root, "rev-list", "--count", "HEAD", "--not", "--remotes"), &repo.Unpushed)
+		if repo.Changed > 0 || repo.Unpushed > 0 {
 			plan.Repos = append(plan.Repos, *repo)
 		}
 	}
@@ -345,6 +366,40 @@ func continueOnlineSlug(s string) string {
 	return firstNonEmptyTrimmed(out, "chat")
 }
 
+// continueOnlineSnapshot is the commit to push: HEAD plus only this chat's uncommitted files, built in a separate
+// index so other uncommitted work in the folder, the person's staging and the stash list stay untouched.
+func continueOnlineSnapshot(repo continueOnlineRepo) (string, error) {
+	head := continueOnlineGit(repo.Root, "rev-parse", "HEAD")
+	if head == "" {
+		return "", fmt.Errorf("no commit to start from")
+	}
+	if repo.Changed == 0 {
+		return head, nil
+	}
+	index, err := os.CreateTemp("", "continue-online-index-")
+	if err != nil {
+		return "", err
+	}
+	index.Close()
+	defer os.Remove(index.Name())
+	env := []string{"GIT_INDEX_FILE=" + index.Name()}
+	if _, err := continueOnlineGitEnv(repo.Root, env, "read-tree", "HEAD"); err != nil {
+		return "", err
+	}
+	if _, err := continueOnlineGitEnv(repo.Root, env, append([]string{"add", "-A", "--"}, repo.files...)...); err != nil {
+		return "", err
+	}
+	tree, err := continueOnlineGitEnv(repo.Root, env, "write-tree")
+	if err != nil {
+		return "", err
+	}
+	return continueOnlineGitEnv(repo.Root, env, "commit-tree", tree, "-p", head, "-m", "Changes from a chat continued online")
+}
+
+func continueOnlineGitEnv(dir string, env []string, args ...string) (string, error) {
+	return continueOnlineGitRun(dir, 30*time.Second, env, args...)
+}
+
 // continueOnlineGit runs one read-only or push git command without a prompt; empty on any failure.
 func continueOnlineGit(dir string, args ...string) string {
 	out, err := continueOnlineGitErr(dir, 20*time.Second, args...)
@@ -355,10 +410,14 @@ func continueOnlineGit(dir string, args ...string) string {
 }
 
 func continueOnlineGitErr(dir string, timeout time.Duration, args ...string) (string, error) {
+	return continueOnlineGitRun(dir, timeout, nil, args...)
+}
+
+func continueOnlineGitRun(dir string, timeout time.Duration, env []string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0"), env...)
 	cmd.Stdin = nil
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -398,19 +457,16 @@ func (api *StreamingAPI) runContinueOnline(ctx context.Context, userID string, p
 	}
 	branches, problems := []map[string]any{}, []string{}
 	for _, repo := range plan.Repos {
-		sha := continueOnlineGit(repo.Root, "stash", "create") // a commit of the uncommitted changes; the stash list is untouched
-		if sha == "" {
-			sha = continueOnlineGit(repo.Root, "rev-parse", "HEAD")
-		}
-		if sha == "" {
-			problems = append(problems, repo.Name+": no commit to push")
+		sha, err := continueOnlineSnapshot(repo)
+		if err != nil {
+			problems = append(problems, repo.Name+": "+err.Error())
 			continue
 		}
 		if _, err := continueOnlineGitErr(repo.Root, 2*time.Minute, "push", "origin", sha+":refs/heads/"+repo.Branch); err != nil {
 			problems = append(problems, repo.Name+": push failed ("+err.Error()+")")
 			continue
 		}
-		branches = append(branches, map[string]any{"repo": repo.Name, "origin": continueOnlineRemoteName(repo.Origin), "branch": repo.Branch, "changed_files": repo.Changed})
+		branches = append(branches, map[string]any{"repo": repo.Name, "origin": continueOnlineRemoteName(repo.Origin), "branch": repo.Branch, "changed_files": repo.Changed, "unpushed_commits": repo.Unpushed})
 	}
 	copied := []string{}
 	for _, file := range append(append([]continueOnlineFile{}, plan.Files...), plan.Setup...) {
@@ -499,7 +555,7 @@ func continueOnlineFirstMessage(plan *continueOnlinePlan, note string, branches 
 	var b strings.Builder
 	fmt.Fprintf(&b, "Continued from the person's Mac: this chat carries on %q from the Mac project %q. The conversation above came from there.\n\nHandoff note from the agent on the Mac:\n%s\n", plan.Chat, plan.macName, strings.TrimSpace(note))
 	if len(branches) > 0 {
-		b.WriteString("\nRepository changes, pushed as branches (uncommitted work included):\n")
+		b.WriteString("\nRepository changes, pushed as branches (this chat's files not yet committed are included):\n")
 		for _, br := range branches {
 			fmt.Fprintf(&b, "- %v: branch %v on %v\n", br["repo"], br["branch"], br["origin"])
 		}
