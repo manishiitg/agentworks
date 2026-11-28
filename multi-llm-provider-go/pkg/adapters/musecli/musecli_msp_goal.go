@@ -31,7 +31,7 @@ func (g *museMSPGoal) native() *llmtypes.NativeGoal {
 	if g == nil || strings.TrimSpace(g.Objective) == "" {
 		return nil
 	}
-	goal := &llmtypes.NativeGoal{Objective: g.Objective, Status: g.Status}
+	goal := &llmtypes.NativeGoal{Objective: g.Objective, Status: g.Status, PercentComplete: g.PercentComplete, CurrentWork: strings.TrimSpace(g.CurrentWork), NextWork: strings.TrimSpace(g.NextWork)}
 	if g.CreatedAtMs > 0 && g.UpdatedAtMs >= g.CreatedAtMs {
 		seconds := (g.UpdatedAtMs - g.CreatedAtMs) / 1000
 		goal.TimeUsedSeconds = &seconds
@@ -83,10 +83,10 @@ func (s *museMSPSession) goalUpdate(reason string) llmtypes.NativeGoalUpdate {
 	return llmtypes.NativeGoalUpdate{Provider: "muse-cli", NativeSessionID: s.sessionID, Goal: s.goal, Reason: reason}
 }
 
-// museMSPGoalCall sends one goal verb for this session.
+// museMSPGoalCall sends one goal verb for this session; set and edit carry the objective.
 func museMSPGoalCall(ctx context.Context, s *museMSPSession, action, objective string) error {
 	params := map[string]any{"commandId": museCommandID(), "sessionId": s.sessionID}
-	if action == "set" {
+	if action == "set" || action == "edit" {
 		params["objective"] = objective
 	}
 	if err := s.rpc.call(ctx, "goal/"+action, params, nil); err != nil {

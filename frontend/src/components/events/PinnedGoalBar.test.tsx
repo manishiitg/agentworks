@@ -98,3 +98,18 @@ it('shows Stop and the latest check for a Claude Code goal', async () => {
     await act(async () => root.unmount())
   }
 })
+
+// #4628: Muse reports its own progress; the bar shows it with what Muse works on now and next, and keeps Pause.
+it('shows progress and now/next for a Muse goal', async () => {
+  const host = document.createElement('div')
+  const root = createRoot(host)
+  const museGoal = { id: '1', type: 'native_goal_updated', data: { update: { provider: 'muse-cli', native_session_id: 'muse_sess', goal: { objective: 'make the tests pass', status: 'active', percent_complete: 140, current_work: 'fixing the drag test', next_work: 'rerun the suite' } } } } as PollingEvent
+  try {
+    await act(async () => root.render(<PinnedGoalBar events={[museGoal]} onCommand={vi.fn()} />))
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe('100')
+    expect(host.textContent).toContain('Now: fixing the drag test · Next: rerun the suite')
+    expect([...host.querySelectorAll('button')].map(button => button.textContent)).toEqual(['make the tests pass', 'Pause', 'Clear'])
+  } finally {
+    await act(async () => root.unmount())
+  }
+})
