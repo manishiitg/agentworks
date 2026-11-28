@@ -7,7 +7,7 @@ import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
 import { AgentShareIcon, describeAgentShare, onlyMeShare, type AgentTeamShare } from './AgentInTeamMark'
 import { AgentDetailSection } from './AgentDetailSection'
-import { BotCard } from '../../products/work/bots/BotCard'
+import { BotCard, botSummary } from '../../products/work/bots/BotCard'
 import { AgentMessageFrom, CodingAppIcons } from './AgentMessageFrom'
 import { CodingCliIcon } from './CodingCliIcon'
 import { useLLMStore } from '../../stores/useLLMStore'
@@ -110,6 +110,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
   const [automationsOpen, setAutomationsOpen] = useState(false)
   const [renameDraft, setRenameDraft] = useState<string | null>(null)
   const [forking, setForking] = useState(false)
+  const [botLine, setBotLine] = useState('')
   const anchor = useRef<HTMLSpanElement>(null)
   const box = useRef<HTMLDivElement>(null)
   const [at, setAt] = useState<{ top: number; left: number; view: 'details' | 'automations' | 'sharing' } | null>(null)
@@ -236,7 +237,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={setupValue}>{setupDetails}</AgentDetailSection> : setupDetails}
-      {clickToOpen && info.bot && <AgentDetailSection title="Bot" value="Share it for others to use"><BotCard workspace={info.bot.workspace} agentKey={info.bot.agentKey} onAsk={info.bot.ask && (message => finish(() => info.bot!.ask!(message)))} /></AgentDetailSection>}
+      {clickToOpen && info.bot && <AgentDetailSection title="Bot" value={botLine || botSummary(null)}><BotCard workspace={info.bot.workspace} agentKey={info.bot.agentKey} onSummary={setBotLine} onAsk={info.bot.ask && (message => finish(() => info.bot!.ask!(message)))} /></AgentDetailSection>}
       {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent" aside={<CodingAppIcons />}><AgentMessageFrom line={info.messageLine} copyText={info.messageCopy} /></AgentDetailSection>}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>

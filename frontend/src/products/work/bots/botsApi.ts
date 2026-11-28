@@ -1,6 +1,5 @@
 import api from '../../../services/api'
 import { folderConnection, remoteProjectConnection } from '../../../utils/remoteSessions'
-import { randomUUID } from '../../../utils/randomUUID'
 import { isLocalDeployment } from '../../productSurfaceConfig'
 import { connectedLocations, useConnectedWorkStore } from '../../../stores/useConnectedWorkStore'
 
@@ -21,7 +20,7 @@ export function botsServers(): BotServer[] | undefined {
  * saved sign-in, and a project on this Mac to this Mac, which reaches the servers' bots itself. */
 const projectConnection = (projectId: string) => isLocalDeployment() ? remoteProjectConnection(projectId) : undefined
 
-/** One button of a bot: a project function. "ask" (its chat) is always first. */
+/** A function of a bot: other agents call it by name ("ask", its chat, is always first). */
 export type BotFunction = { name: string; description?: string; input_schema?: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] } }
 
 /** A bot as GET /api/bots lists it (#4545). The server decides who sees which bot. */
@@ -104,13 +103,6 @@ export async function readBotState(workspace: string, agent: string): Promise<Bo
 export async function saveBot(workspace: string, agent: string, change: BotChange): Promise<BotState> {
   const { data } = await api.put<BotState>('/api/bots/agent', { workspace, agent, ...change }, { connection: folderConnection(workspace) })
   botsChanged()
-  return data
-}
-
-export type BotCallResult = { call_id?: string; status?: string; result?: unknown; error?: string; next?: string }
-
-export async function callBot(bot: Bot, fn: string, args: Record<string, unknown>): Promise<BotCallResult> {
-  const { data } = await api.post<BotCallResult>('/api/bots/call', { bot: bot.id, function: fn, args, submission_id: randomUUID() }, { connection: bot.server?.id })
   return data
 }
 
