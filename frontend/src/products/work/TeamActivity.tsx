@@ -14,7 +14,7 @@ import { type TaskFile, type TaskFileContent } from './TaskAttachments'
 
 export type ActivityItem = AvatarFields & { private?:boolean; id:string; kind:string; at:string; person:string; title:string; verb:string; line?:string; why?:string; unseen?:boolean;today?:boolean; cli?:string; bridge?:{thread_id:string;can_open:boolean} }
 /** A Needs-you card (#2853): an agent asks one person, who answers with one of its buttons. The server decides who may answer (for_me). */
-export type TeamNeed = { id:string; line:string; link?:string; links?:string[]; files?:TaskFile[]; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; mine?:boolean; at:string }
+export type TeamNeed = { id:string; line:string; message?:string; link?:string; links?:string[]; files?:TaskFile[]; task?:string; task_title?:string; for:string; for_me:boolean; buttons:string[]; agent:string; person:string; mine?:boolean; at:string }
 export type TeamNeedAnswer = { note?:string; choose_agent?:{id:string;name:string;online:boolean}[] }
 type ActivityView = {feed:ActivityItem[];collapsed_item?:ActivityItem|null;needs?:TeamNeed[];next_cursor?:string;refresh_after_ms?:number;unseen?:number;today?:number}
 

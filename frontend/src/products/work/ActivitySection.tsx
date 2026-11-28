@@ -23,42 +23,55 @@ export function CrewActivitySection({projectId,team,onNeedsCount,onAsk,enabled=t
  const [all,setAll]=useState(false)
  if(!waiting)return null
  const shown=all?mine:mine.slice(0,1)
- return <section aria-label="Needs you" className="mb-2 rounded-lg border border-amber-500/60 text-[11px]">
-  <button type="button" aria-expanded={open} onClick={()=>setOpen(!open)} className="flex w-full items-center gap-1.5 px-2 py-1 text-left text-xs font-semibold text-amber-700 dark:text-amber-300">
-   <span aria-hidden>⚠</span><span>Needs you</span><span className="ml-auto text-[10px] font-normal">{waiting} waiting {open?'▾':'▸'}</span>
+ return <section aria-label="Needs you" className="mb-2 overflow-hidden rounded-lg border border-amber-500/50 bg-amber-50/60 text-xs dark:bg-amber-500/5">
+  <button type="button" aria-expanded={open} onClick={()=>setOpen(!open)} className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-left text-xs font-semibold text-amber-800 dark:text-amber-300">
+   <span aria-hidden>⚠</span><span>Needs you</span><span className="ml-auto text-[11px] font-normal text-amber-700/80 dark:text-amber-300/80">{waiting>1&&`${waiting} waiting `}{open?'▾':'▸'}</span>
   </button>
-  {open&&<><ol className="space-y-1 px-1 pb-1">{runs.cards.map(card=><RunProblemCardView key={card.id} card={card} press={runs.press} onAsk={onAsk}/>)}{shown.map(need=><NeedCard key={need.id} need={need} onAnswer={activity.answer} openFile={activity.openFile}/>)}</ol>
-   {mine.length>1&&!all&&<button type="button" onClick={()=>setAll(true)} className="w-full border-t border-border py-1 text-[10px] text-muted-foreground hover:text-foreground">Show {mine.length-1} more</button>}</>}
+  {open&&<><ol className="divide-y divide-amber-500/20 border-t border-amber-500/20">{runs.cards.map(card=><RunProblemCardView key={card.id} card={card} press={runs.press} onAsk={onAsk}/>)}{shown.map(need=><NeedCard key={need.id} need={need} onAnswer={activity.answer} openFile={activity.openFile}/>)}</ol>
+   {mine.length>1&&!all&&<button type="button" onClick={()=>setAll(true)} className="w-full border-t border-amber-500/20 py-1 text-[11px] text-muted-foreground hover:text-foreground">Show {mine.length-1} more</button>}</>}
  </section>
 }
 
 export type NeedAnswer=(need:string,button:string,helper?:string,comment?:string)=>Promise<TeamNeedAnswer>
 export type NeedFile=(need:string,file:TaskFile)=>Promise<TaskFileContent>
 
-/** One pinned Needs-you card. Only the person asked gets buttons and a note box (a review's "why");
- * everyone else sees who it waits on. Its links and files (a PR, a plan .md) open on the card. */
+/** One pinned Needs-you card: who asks, the question in full, then the answer buttons (the first is the main one) and an
+ * optional note behind "Add a note". Only the person asked gets buttons; everyone else sees who it waits on. Its links
+ * and files (a PR, a plan .md) open on the card. */
 export function NeedCard({need,onAnswer,openFile}:{need:TeamNeed;onAnswer?:NeedAnswer;openFile?:NeedFile}) {
  const [busy,setBusy]=useState('')
  const [note,setNote]=useState('')
  const [comment,setComment]=useState('')
+ const [noting,setNoting]=useState(false)
+ const [full,setFull]=useState(false)
  const [choose,setChoose]=useState<TeamNeedAnswer['choose_agent']>()
  const click=async(button:string,helper?:string)=>{
   if(!onAnswer)return
   setBusy(button||'note');setNote('')
-  try {const out=await onAnswer(need.id,button,helper,comment.trim()||undefined);setChoose(out.choose_agent);if(!out.choose_agent){setNote(out.note||'');setComment('')}}
+  try {const out=await onAnswer(need.id,button,helper,comment.trim()||undefined);setChoose(out.choose_agent);if(!out.choose_agent){setNote(out.note||'');setComment('');setNoting(false)}}
   catch(e){setNote(teamError(e))}
   finally{setBusy('')}
  }
- return <li className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-1 text-[11px]">
-  <div className="flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">{need.for_me?'Needs you':`Needs ${need.for}`}</span><span className="min-w-0 truncate text-muted-foreground">· {need.mine?'your':`${need.person}'s`} {need.agent} · {formatRelativeIso(need.at)}</span></div>
-  {need.task&&<div className="mt-0.5 flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{need.task}</span><span className="min-w-0 truncate">{need.task_title}</span></div>}
-  <p className="mt-0.5 break-words">{need.line}</p>
-  {need.links||need.files?<TaskAttachments links={need.links} files={need.files} open={openFile&&(file=>openFile(need.id,file))}/>
-   :need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="text-[10px] text-primary">Open link ›</a>}
-  {need.for_me&&onAnswer&&<textarea aria-label="Note with your answer" rows={comment?3:1} value={comment} onChange={e=>setComment(e.target.value)} maxLength={4000} placeholder="Add a note (optional)" className="mt-1 w-full resize-y rounded border border-border bg-background px-1 py-0.5 text-[11px]"/>}
-  {need.for_me?<div className="mt-1 flex flex-wrap gap-1">{comment.trim()&&<button type="button" disabled={!!busy} onClick={()=>void click('')} className="rounded border border-primary/50 bg-background px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted disabled:opacity-50">{busy==='note'?'Sending…':'Send note'}</button>}{need.buttons.map(button=><button key={button} type="button" title={button==='Ask my agent'?`Hand this to one of your own agents: it handles it and answers ${need.agent} for you`:undefined} disabled={!!busy} onClick={()=>void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy===button?'Sending…':button}</button>)}</div>
-   :<p className="mt-0.5 text-[10px] text-muted-foreground">Waiting for {need.for}</p>}
-  {choose&&<div className="mt-1 text-[10px]"><p className="text-muted-foreground">Which of your agents should handle requests like this? It's remembered.</p><div className="mt-0.5 flex flex-wrap gap-1">{choose.map(agent=><button key={agent.id} type="button" disabled={!!busy} onClick={()=>void click('Ask my agent',agent.id)} className="rounded border border-border bg-background px-1.5 py-0.5 hover:bg-muted disabled:opacity-50">{agent.name}{!agent.online&&' (offline)'}</button>)}</div></div>}
-  {note&&<p className="mt-0.5 text-[10px] text-muted-foreground">{note}</p>}
+ const long=(need.message?.length||0)>280
+ const answering=need.for_me&&!!onAnswer
+ const button='rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50'
+ return <li className="px-2.5 py-2 text-xs">
+  <div className="flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground"><span className="min-w-0 truncate">{need.mine?'Your':`${need.person}'s`} <span className="font-medium text-foreground/80">{need.agent}</span> asks{!need.for_me&&need.for?` ${need.for}`:''}</span><span className="shrink-0">· {formatRelativeIso(need.at)}</span></div>
+  {need.task&&<div className="mt-1 flex min-w-0 items-center gap-1 text-[11px]"><span className="shrink-0 rounded bg-primary/10 px-1 font-semibold text-primary">{need.task}</span><span className="min-w-0 truncate">{need.task_title}</span></div>}
+  <p className="mt-1 break-words text-[13px] font-semibold leading-snug text-foreground">{need.line}</p>
+  {need.message&&<><p className={`mt-1 whitespace-pre-line break-words leading-relaxed text-foreground/80 ${long&&!full?'line-clamp-5':''}`}>{need.message}</p>
+   {long&&<button type="button" onClick={()=>setFull(!full)} className="mt-0.5 text-[11px] text-primary hover:underline">{full?'Show less':'Show all'}</button>}</>}
+  {need.links||need.files?<div className="mt-1"><TaskAttachments links={need.links} files={need.files} open={openFile&&(file=>openFile(need.id,file))}/></div>
+   :need.link&&<a href={need.link} target="_blank" rel="noreferrer" className="mt-1 inline-block text-[11px] text-primary">Open link ›</a>}
+  {answering?<>
+   {noting&&<textarea aria-label="Note with your answer" autoFocus rows={2} value={comment} onChange={e=>setComment(e.target.value)} maxLength={4000} placeholder="Add a note, sent with your answer" className="mt-2 w-full resize-y rounded-md border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"/>}
+   <div className="mt-2 flex flex-wrap items-center gap-1.5">
+    {need.buttons.map((label,i)=><button key={label} type="button" title={label==='Ask my agent'?`Hand this to one of your own agents: it handles it and answers ${need.agent} for you`:undefined} disabled={!!busy} onClick={()=>void click(label)} className={`${button} ${i===0?'bg-primary text-primary-foreground hover:bg-primary/90':'border border-border bg-background hover:bg-muted'}`}>{busy===label?'Sending…':label}</button>)}
+    {noting&&comment.trim()&&<button type="button" disabled={!!busy} onClick={()=>void click('')} className={`${button} border border-primary/50 bg-background text-primary hover:bg-muted`}>{busy==='note'?'Sending…':'Send note only'}</button>}
+    {!noting&&<button type="button" onClick={()=>setNoting(true)} className="ml-auto text-[11px] text-muted-foreground hover:text-foreground">Add a note</button>}
+   </div></>
+   :!need.for_me&&<p className="mt-1 text-[11px] text-muted-foreground">Waiting for {need.for}</p>}
+  {choose&&<div className="mt-2 text-[11px]"><p className="text-muted-foreground">Which of your agents should handle requests like this? It's remembered.</p><div className="mt-1 flex flex-wrap gap-1.5">{choose.map(agent=><button key={agent.id} type="button" disabled={!!busy} onClick={()=>void click('Ask my agent',agent.id)} className={`${button} border border-border bg-background hover:bg-muted`}>{agent.name}{!agent.online&&' (offline)'}</button>)}</div></div>}
+  {note&&<p className="mt-1 text-[11px] text-muted-foreground">{note}</p>}
  </li>
 }

@@ -64,10 +64,10 @@ export function RunProblemCardView({ card, press, onAsk }: { card: RunProblemCar
       setNote(message?.message || message?.error || 'That did not work. Try again.')
     } finally { setBusy('') }
   }
-  return <li className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-1 text-[11px]">
-    <div className="flex min-w-0 items-center gap-1 text-[10px]"><span className="shrink-0 font-semibold text-amber-700 dark:text-amber-300">Needs you</span><span className="min-w-0 truncate text-muted-foreground">· {card.kind === 'missed' ? 'missed run' : 'failed run'}</span></div>
-    <p className="mt-0.5 break-words">{card.line}</p>
-    <div className="mt-1 flex flex-wrap gap-1">{card.buttons.map(button => <button key={button} type="button" disabled={!!busy} onClick={() => void click(button)} className="rounded border border-border bg-background px-1.5 py-0.5 text-[10px] hover:bg-muted disabled:opacity-50">{busy === button ? 'Sending…' : button}</button>)}</div>
-    {note && <p className="mt-0.5 text-[10px] text-muted-foreground">{note}</p>}
+  return <li className="px-2.5 py-2 text-xs">
+    <div className="text-[11px] text-muted-foreground">{card.kind === 'missed' ? 'Missed run' : 'Failed run'}</div>
+    <p className="mt-1 break-words text-[13px] font-semibold leading-snug text-foreground">{card.line}</p>
+    <div className="mt-2 flex flex-wrap gap-1.5">{card.buttons.map((button, i) => <button key={button} type="button" disabled={!!busy} onClick={() => void click(button)} className={`rounded-md px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${i === 0 ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border border-border bg-background hover:bg-muted'}`}>{busy === button ? 'Sending…' : button}</button>)}</div>
+    {note && <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>}
   </li>
 }
