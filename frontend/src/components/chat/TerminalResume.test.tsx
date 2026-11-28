@@ -34,7 +34,7 @@ it('only displays a command and never moves a chat while opening the menu', asyn
   document.body.append(host)
   try {
     await act(async () => root.render(<TerminalResumeNotice tabId="own" />))
-    expect(host.textContent).toContain('agentworks resume opaque-chat')
+    expect(document.body.textContent).toContain('agentworks resume opaque-chat')
     expect(mock.post).not.toHaveBeenCalled()
     expect(mock.get.mock.calls.every(([, options]) => options.params.action !== 'fetch')).toBe(true)
   } finally { await act(async () => root.unmount()); host.remove() }
