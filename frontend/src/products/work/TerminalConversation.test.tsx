@@ -67,7 +67,7 @@ it('keeps hidden teammate journals private and still asks the agent from the sam
   vi.mocked(teamRequest).mockReset()
   f.team = { view: { team: { on: true }, agents: [{ id: 'terminal', name: 'Helper', owner_name: 'Colleague', chat_share: 'agent' }], reachable: [{ agent_id: 'terminal', address: 'agent:colleague/helper' }] } }
   await act(async () => root.render(<TerminalConversation selection={{ ...selection, owner: false }} />))
-  expect(host.textContent).toContain("Colleague keeps this agent's chat private")
+  expect(host.textContent).toContain("Colleague shares this agent, not the chat")
   expect(vi.mocked(teamRequest)).not.toHaveBeenCalled()
   expect(host.querySelector('textarea')?.disabled).toBe(false)
   expect(host.querySelector('[role="dialog"]')).toBeNull()

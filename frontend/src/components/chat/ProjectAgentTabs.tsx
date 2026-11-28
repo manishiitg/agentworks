@@ -354,6 +354,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
       shortcut: index < 5 ? index + 1 : undefined, tabId: tab.tabId, name: tabLabel(tab), main,
       place: chat?.chat_location === 'mac' ? 'mac' : undefined,
       ownerId: mine ? undefined : tabOwnerId(tab), owner: mine ? undefined : personName(tabOwnerId(tab)),
+      // A teammate's Agent only agent can be asked, not added to your groups (owner, 28 Nov).
+      messageOnly: !mine && teamAgentForTab(teamState, tab.metadata?.agentProfileConversationKey, false, false)?.chat_share === 'agent' || undefined,
       // Hiding only affects the sidebar, never the tab, keyboard order or agent's work.
       sidebarHidden: mine && chat?.can_write !== false && chat?.pinned === false,
       sidebarOrder: chat ? sidebarOrder.get(chat.conversation_key) : undefined,

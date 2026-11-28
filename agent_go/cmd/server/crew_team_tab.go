@@ -91,12 +91,9 @@ type crewTeamTabAgent struct {
 	HasRule        bool               `json:"has_rule"`
 	CanEditRule    bool               `json:"can_edit_rule"`
 	WhenOthersLine string             `json:"when_others_line"`
-	// Teammates see (crew_team_chat_private.go). ChatShareLabel and ChatShareOptions are the choice, on the viewer's own
-	// agent; on someone else's, ChatPrivateLine replaces the chat of a Hidden agent.
-	ChatShare        string                `json:"chat_share"`
-	ChatShareLabel   string                `json:"chat_share_label,omitempty"`
-	ChatShareOptions []crewChatShareOption `json:"chat_share_options,omitempty"`
-	ChatPrivateLine  string                `json:"chat_private_line,omitempty"`
+	// What teammates see (crew_team_chat_private.go): on someone else's Agent only agent, ChatPrivateLine replaces the chat.
+	ChatShare       string `json:"chat_share"`
+	ChatPrivateLine string `json:"chat_private_line,omitempty"`
 	// Who it is shared with, on the viewer's own agent only: whole_team or chosen, and the chosen current members.
 	Audience string                   `json:"audience,omitempty"`
 	People   []crewTeamAudiencePerson `json:"chosen_people,omitempty"`
@@ -479,7 +476,6 @@ func crewTeamTabFor(ctx context.Context, t crewTeam, viewer string) crewTeamTabR
 			if mine {
 				row.Audience, row.People = rule.audienceName(), t.audiencePeople(rule)
 				row.PermissionsPrompt = crewTeamPermissionsPrompt(a.Name)
-				row.ChatShareLabel, row.ChatShareOptions = crewTeamChatShareLabel, crewChatShareOptions
 			} else {
 				if row.ChatShare == crewChatShareAgent {
 					row.ChatPrivateLine = crewChatPrivateLine(p.UserID)
@@ -664,7 +660,7 @@ func crewTeamSoloAgents(ctx context.Context, t crewTeam, bridges crewTeamBridges
 		row := crewTeamTabAgent{userAvatarFields: avatarFieldsFor(t.OwnerID, t.ProjectID), ID: a.ID, Kind: t.Agents[a.ID].Kind, Key: a.ID, WatchKey: a.ChatKey, Name: a.Name, Fixed: "Only you", OwnerID: t.OwnerID, OwnerName: name, Mine: true, Place: a.Place, Tab: a.Tab,
 			Uses: []crewTeamAgentUse{}, WhenOthersAsk: rule.WhenOthersAsk, HasRule: rule.WhenOthersAsk != "", CanEditRule: true,
 			WhenOthersLine: crewTeamWhenOthersLine(rule, name, true), Purpose: a.Purpose, Examples: a.Examples, CanSetPurpose: true,
-			ChatShare: t.agentChatShare(ctx, t.OwnerID, a.ChatKey), ChatShareLabel: crewTeamChatShareLabel, ChatShareOptions: crewChatShareOptions,
+			ChatShare:   t.agentChatShare(ctx, t.OwnerID, a.ChatKey),
 			AgentBridge: bridges.row(t, a, t.OwnerID)}
 		row.Setup = setups.setup(t, a, t.OwnerID, t.OwnerID, false, row.AgentBridge)
 		out = append(out, row)

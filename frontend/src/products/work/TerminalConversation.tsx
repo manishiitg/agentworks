@@ -1,6 +1,6 @@
 import { MarkdownRenderer } from '../../components/ui/MarkdownRenderer'
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, Lock } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { captureChatIdentity, isChatIdentityCurrent } from '../../utils/chatIdentity'
 import { TeammateAsk } from './TeamAgentAsk'
 import { ForkTeammateAgent } from './ForkTeammateAgent'
@@ -97,7 +97,7 @@ function useNativeIdentity(selection: TerminalConversationSelection) {
     ? `${provider ? `${provider} agent` : 'Agent'} on ${place}`
     : `Native agent${provider ? ` · ${provider}` : ''} running in ${selection.owner ? 'your' : 'a'} terminal on ${place}`
   const hidden = !selection.owner && (selection.kind === 'app' || agent?.chat_share === 'agent' || reachable?.chat_share === 'agent' || !!agent?.chat_private_line)
-  const privateLine = agent?.chat_private_line || `${person.split('@')[0]} keeps this agent's chat private. You can still ask it.`
+  const privateLine = agent?.chat_private_line || `${person.split('@')[0]} shares this agent, not the chat. Ask it what it's working on, how to do something, or hand it a task.`
   return { team, agent, reachable, line, state, hidden, privateLine, place }
 }
 
@@ -108,7 +108,7 @@ export function TerminalConversationHeader({ selection, close }: { selection: Te
   return <div data-agent-header className="flex min-w-0 flex-1 items-center gap-2 text-sm">
     <button type="button" aria-label="Back to app chat" onClick={close} className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted"><ArrowLeft className="h-4 w-4" /></button>
     <span className="min-w-0 shrink truncate font-semibold" title={line}>{name}</span>
-    <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state && <> · <span className={state === 'Working' ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{state}</span></>}{hidden && <> · <Lock aria-label="Chat hidden" className="inline h-3 w-3" /> Chat hidden</>}</span>
+    <span className="min-w-0 truncate text-xs text-muted-foreground">{place}{state && <> · <span className={state === 'Working' ? 'text-emerald-600 dark:text-emerald-400' : undefined}>{state}</span></>}{hidden && <> · <span className="rounded-full bg-muted/70 px-1.5 py-0.5 text-[10px] font-medium">Agent only</span></>}</span>
     {!selection.owner && agent?.can_fork && <ForkTeammateAgent compact target={selection.target} agent={selection.agent.id} name={name} />}
   </div>
 }
@@ -123,7 +123,7 @@ export function TerminalConversation({ selection }: { selection: TerminalConvers
   const online = reachable?.online ?? agent?.online
   const offline = !selection.owner && online === false
   return <section aria-label={`${selection.agent.name} conversation`} className="flex min-h-0 flex-1 flex-col">
-    {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span><Lock aria-hidden="true" className="mr-1 inline h-3.5 w-3.5" />{privateLine}</span></p>
+    {hidden ? <p className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground"><span>{privateLine}</span></p>
       : offline ? <p role="status" className="flex min-h-0 flex-1 items-center justify-center px-6 py-8 text-center text-sm text-muted-foreground">{place} is offline, so this chat can't be shown right now. It shows here again when it's back.</p>
       : <TerminalTranscript target={selection.target} agent={selection.agent} />}
     <TeammateAsk target={selection.target} address={address} name={name} where={place} online={online} enabled={enabled} agent={{cli:reachable?.cli||agent?.cli,engine:reachable?.engine||agent?.engine,model_id:reachable?.model_id||agent?.model_id,reasoning_effort:reachable?.reasoning_effort||agent?.reasoning_effort}} scope={`${selection.identity}:${selection.target.connection}:${selection.target.project}:${selection.agent.id}`} />

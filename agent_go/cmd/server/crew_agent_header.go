@@ -18,11 +18,12 @@ func crewAgentHeaderStatus(t crewTeam, row crewTeamRegisteredAgent) *crewAgentWh
 		return nil
 	}
 	if row.Rule.ChatShare != crewChatShareLive {
-		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you"}
+		return &crewAgentWhenOffline{Line: "When your Mac is off, questions wait until it's back."}
 	}
+	const copy = "When your Mac is off, teammates' agents read this chat's copy"
 	b, ok := crewOfflineRowBinding(t, row)
 	if !ok {
-		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you · chat not on the server yet"}
+		return &crewAgentWhenOffline{Line: copy + " (not on the server yet)."}
 	}
 	dir, err := crewOfflineDirectory(t.ProjectID, row.ID)
 	if err != nil {
@@ -30,37 +31,25 @@ func crewAgentHeaderStatus(t crewTeam, row crewTeamRegisteredAgent) *crewAgentWh
 	}
 	h, err := readCrewOfflineHistory(dir, b)
 	if err != nil || h.Revision == 0 {
-		return &crewAgentWhenOffline{Line: "Teammates' asks wait for you · chat not on the server yet"}
+		return &crewAgentWhenOffline{Line: copy + " (not on the server yet)."}
 	}
-	if h.Offset != h.SourceSize {
-		if h.SourceSize > 0 {
-			return &crewAgentWhenOffline{Line: fmt.Sprintf("Teammates' agents can read this chat · copying %d%% of %s", h.Offset*100/h.SourceSize, formatCrewSyncBytes(h.SourceSize))}
-		}
-		return &crewAgentWhenOffline{Line: "Teammates' agents can read this chat · copying 0%"}
+	if h.Offset != h.SourceSize && h.SourceSize > 0 {
+		return &crewAgentWhenOffline{Line: fmt.Sprintf("%s (copying, %d%% done).", copy, h.Offset*100/h.SourceSize)}
 	}
-	line := "Teammates' agents can read this chat"
-	size := h.SourceSize
 	if info, err := os.Stat(filepath.Join(dir, "history.json")); err == nil {
-		if size <= 0 {
-			size = info.Size()
-		}
-		if size > 0 {
-			line += " · " + formatCrewSyncBytes(size)
-		}
-		line += fmt.Sprintf(" · synced %dm ago", int(time.Since(info.ModTime()).Minutes()))
-	} else if size > 0 {
-		line += " · " + formatCrewSyncBytes(size)
+		return &crewAgentWhenOffline{Line: fmt.Sprintf("%s (synced %s).", copy, crewSyncedAgo(time.Since(info.ModTime())))}
 	}
-	return &crewAgentWhenOffline{Line: line}
+	return &crewAgentWhenOffline{Line: copy + "."}
 }
 
-func formatCrewSyncBytes(n int64) string {
+// crewSyncedAgo says how long ago in plain words: "just now", "5 min ago", "3 h ago".
+func crewSyncedAgo(d time.Duration) string {
 	switch {
-	case n < 1024:
-		return fmt.Sprintf("%d B", n)
-	case n < 1024*1024:
-		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
 	default:
-		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+		return fmt.Sprintf("%d h ago", int(d.Hours()))
 	}
 }
