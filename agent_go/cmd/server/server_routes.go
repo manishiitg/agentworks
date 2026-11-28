@@ -599,6 +599,7 @@ func (api *StreamingAPI) registerProductRoutes(router, apiRouter *mux.Router) {
 	apiRouter.HandleFunc("/bots", api.handleCrewBots).Methods(http.MethodGet)
 	apiRouter.HandleFunc("/bots/agent", api.handleCrewBots).Methods(http.MethodGet, http.MethodPut)
 	apiRouter.HandleFunc("/bots/call", api.handleCrewBots).Methods(http.MethodPost)
+	apiRouter.HandleFunc("/bots/project", api.handleCrewBots).Methods(http.MethodGet, http.MethodPost)
 	apiRouter.HandleFunc("/chat-search", api.handleChatMessageSearch).Methods(http.MethodPost)
 	apiRouter.HandleFunc("/chat-search/message", api.handleChatMessageOpen).Methods(http.MethodPost)
 	apiRouter.HandleFunc("/project-chat-instructions", api.handleProjectChatInstructions).Methods(http.MethodGet, http.MethodPut)

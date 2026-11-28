@@ -82,6 +82,9 @@ type projectOwnerRecord struct {
 	SharedAgentSince map[string]string `json:"shared_agent_since,omitempty"`
 	// Bots are this project's agents shared for others to use without joining it, by conversation key (crew_bots.go).
 	Bots map[string]crewBot `json:"bots,omitempty"`
+	// AddedBots are other projects' bots added to this project (by bot id): they show in its agent list and right
+	// menu, and its agents can ask them. Each person's own access to a bot is still checked when they use it.
+	AddedBots []string `json:"added_bots,omitempty"`
 	// CoOwners build a server Crew with its main owner (OwnerID, the creator, who never changes and whose server account
 	// every turn runs in). Server-controlled like the rest of the record; only the main owner changes it (crew_owners.go).
 	CoOwners []string `json:"co_owners,omitempty"`

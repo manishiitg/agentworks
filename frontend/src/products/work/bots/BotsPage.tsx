@@ -3,7 +3,7 @@ import { Bot as BotIcon, X } from 'lucide-react'
 import { useAuthStore } from '../../../stores/useAuthStore'
 import { openProjectAskConversation } from '../../../utils/projectAskConversation'
 import { WorkingTipsContext } from '../../../components/chat/workingTipsContext'
-import { botError, callBot, listBots, type Bot, type BotFunction } from './botsApi'
+import { BOTS_CHANGED_EVENT, botError, callBot, listBots, setProjectBot, type Bot, type BotFunction, type BotProject } from './botsApi'
 import { useBotsPageStore } from './botsPageStore'
 
 const ChatArea = lazy(() => import('../../../components/ChatArea'))
@@ -15,16 +15,26 @@ const ChatArea = lazy(() => import('../../../components/ChatArea'))
  */
 export default function BotsPage() {
   const close = useBotsPageStore(state => state.setOpen)
+  const asked = useBotsPageStore(state => state.selected)
   const [bots, setBots] = useState<Bot[] | null>(null)
+  const [targets, setTargets] = useState<BotProject[]>([])
   const [error, setError] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string | null>(asked)
   const [retry, setRetry] = useState(0)
+  useEffect(() => { if (asked) setSelected(asked) }, [asked])
   useEffect(() => {
     let cancelled = false
-    setError('')
-    void listBots().then(list => { if (!cancelled) { setBots(list); setSelected(current => current && list.some(bot => bot.id === current) ? current : list.find(bot => !bot.mine)?.id ?? list[0]?.id ?? null) } })
-      .catch(reason => { if (!cancelled) { setBots([]); setError(botError(reason, 'Could not load bots.')) } })
-    return () => { cancelled = true }
+    const load = () => {
+      setError('')
+      void listBots().then(({ bots: list, addTargets }) => {
+        if (cancelled) return
+        setBots(list); setTargets(addTargets)
+        setSelected(current => current && list.some(bot => bot.id === current) ? current : list.find(bot => !bot.mine)?.id ?? list[0]?.id ?? null)
+      }).catch(reason => { if (!cancelled) { setBots([]); setError(botError(reason, 'Could not load bots.')) } })
+    }
+    load()
+    window.addEventListener(BOTS_CHANGED_EVENT, load)
+    return () => { cancelled = true; window.removeEventListener(BOTS_CHANGED_EVENT, load) }
   }, [retry])
   const bot = bots?.find(item => item.id === selected)
   return <div className="flex h-full min-h-0 flex-col bg-background">
@@ -53,13 +63,13 @@ export default function BotsPage() {
         </button>)}
       </nav>
       <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {bot ? <BotView key={bot.id} bot={bot} /> : bots && bots.length > 0 && <p className="p-6 text-sm text-muted-foreground">Choose a bot.</p>}
+        {bot ? <BotView key={bot.id} bot={bot} targets={targets} /> : bots && bots.length > 0 && <p className="p-6 text-sm text-muted-foreground">Choose a bot.</p>}
       </main>
     </div>
   </div>
 }
 
-function BotView({ bot }: { bot: Bot }) {
+function BotView({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
   const buttons = bot.functions.filter(fn => fn.name !== 'ask')
   return <>
     <div className="flex shrink-0 items-start gap-3 border-b border-border px-4 py-3">
@@ -70,6 +80,7 @@ function BotView({ bot }: { bot: Bot }) {
         <p className="text-[11px] text-muted-foreground">From {bot.project_title}, {bot.mine ? 'your project' : `shared by ${bot.maker_name}`}. Your chat is yours alone; it runs with the project's setup and its cost is yours.</p>
         {buttons.length > 0 && <div className="mt-2 flex flex-wrap gap-1.5">{buttons.map(fn => <BotButton key={fn.name} bot={bot.id} fn={fn} />)}</div>}
       </div>
+      <AddToProject bot={bot} targets={targets.filter(target => target.project_id !== bot.project_id)} />
     </div>
     <BotChat bot={bot} />
   </>
@@ -135,4 +146,35 @@ function BotChat({ bot }: { bot: Bot }) {
     {tabId ? <WorkingTipsContext.Provider value={false}><Suspense fallback={<p role="status" className="p-4 text-sm">Opening chat…</p>}><ChatArea tabId={tabId} compact hideHeader previousChatsWorkspacePath={bot.workspace} landingContent={<div />} composerPlaceholder={`Ask ${bot.name}…`} /></Suspense></WorkingTipsContext.Provider>
       : <div className="p-4 text-sm text-muted-foreground"><p role="status">{error || 'Opening chat…'}</p>{error && <button type="button" onClick={() => setRetry(value => value + 1)} className="mt-2 underline">Try again</button>}</div>}
   </section>
+}
+
+/**
+ * Add the bot to one of your projects on the server (#4545): it shows in that project's agent list and right menu, and
+ * its agents can ask it. You don't join the bot's project.
+ */
+function AddToProject({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
+  const [pick, setPick] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const inProjects = bot.in_projects ?? []
+  const choices = targets.filter(target => !inProjects.some(item => item.project_id === target.project_id))
+  const change = async (projectId: string, add: boolean) => {
+    setBusy(true); setError('')
+    try { await setProjectBot(projectId, bot.id, add); setPick('') } catch (reason) { setError(botError(reason, 'Could not change it.')) } finally { setBusy(false) }
+  }
+  if (!targets.length && !inProjects.length) return null
+  return <div className="w-56 shrink-0 space-y-1 text-xs max-md:w-40">
+    {inProjects.map(project => <div key={project.project_id} className="flex items-center justify-between gap-2">
+      <span className="truncate rounded-full bg-emerald-500/10 px-2 py-0.5 text-emerald-700 dark:text-emerald-300">✓ In {project.title}</span>
+      <button type="button" disabled={busy} onClick={() => void change(project.project_id, false)} className="shrink-0 text-muted-foreground hover:text-destructive">Remove</button>
+    </div>)}
+    {choices.length > 0 && <div className="flex gap-1">
+      <select aria-label="Add to a project" value={pick} onChange={event => setPick(event.target.value)} className="min-w-0 flex-1 rounded-md border border-input bg-background px-1 py-1">
+        <option value="">Add to a project…</option>
+        {choices.map(target => <option key={target.project_id} value={target.project_id}>{target.title}</option>)}
+      </select>
+      <button type="button" disabled={!pick || busy} onClick={() => void change(pick, true)} className="rounded-md border border-border px-2 disabled:opacity-50">Add</button>
+    </div>}
+    {error && <p role="alert" className="text-destructive">{error}</p>}
+  </div>
 }

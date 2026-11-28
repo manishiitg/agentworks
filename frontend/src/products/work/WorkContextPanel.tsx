@@ -28,6 +28,7 @@ import { CrewActivitySection } from './ActivitySection'
 import { useTeamSetupsList } from './useTeamSetupsList'
 import { ProjectActivityRows, projectActivityLine, projectActivitySetupMessage } from './ProjectActivityRows'
 import { ProjectTaskPage } from './ProjectTasksRow'
+import { ProjectBotsSection } from './bots/ProjectBotsSection'
 import { openCrewAccess } from './MacSharedAgents'
 import { useSetupPromptHidden } from '../../components/workspace/SetupPrompt'
 import { WorkContextSubmenu } from './WorkContextSubmenu'
@@ -265,6 +266,8 @@ export function WorkContextPanel({ workspacePath, projectId = '', profileId = 'w
           {inboxRow && <Row icon={Mail} detail={data?.details['schedules:email']} onClick={() => openAutomation('email')}>Inbox</Row>}
         </>}
       </WorkspaceCompactGroup></TooltipProvider>}
+      {/* Other projects' bots added here (#4545); only in projects on the server. */}
+      {projectId && <ProjectBotsSection projectId={projectId} />}
     </>}
     {error ? <div role="status" className="space-y-1 px-1 text-xs text-muted-foreground"><p>{error}</p><button type="button" onClick={refresh} className="inline-flex items-center gap-1 py-1 hover:text-foreground"><RefreshCw className="h-3 w-3"/>Retry</button></div> : null}
   </WorkspaceContextCard>

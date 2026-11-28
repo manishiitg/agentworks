@@ -40,6 +40,23 @@ func TestCrewBotAdmitsOnlyItsAudience(t *testing.T) {
 	}
 	check("everyone", map[string]bool{"ann": true, "bob": true, "nowork": false})
 
+	// Adding a bot to a project (#4545): only that project's builders, and only a bot shared with them.
+	if err := registry.Register(projectOwnerRecord{Product: "work", Folder: "annproj-12345678", ProjectID: "annproj", OwnerID: "ann", Shared: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeCrewBot(root, key, &crewBot{Maker: "owner", People: []string{"ann"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := setCrewProjectBot("bob", "annproj", key, true); err == nil {
+		t.Fatal("someone who does not build the project added a bot to it")
+	}
+	if err := setCrewProjectBot("ann", "annproj", key, true); err != nil {
+		t.Fatalf("the project's owner could not add a bot shared with them: %v", err)
+	}
+	if rec, _ := crewOwnerRecordAt("Crew/annproj-12345678"); !containsID(rec.AddedBots, key) {
+		t.Fatal("the added bot is not saved on the project")
+	}
+
 	if err := writeCrewBot(root, key, nil); err != nil {
 		t.Fatal(err)
 	}
