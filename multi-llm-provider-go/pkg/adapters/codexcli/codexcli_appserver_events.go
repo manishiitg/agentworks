@@ -119,6 +119,13 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 	}
 	goalStateChanged := s.goalStateChanged
 	s.mu.Unlock()
+	for _, kept := range r.takeStartupNotices() {
+		if status, failed := codexMcpStartupFailed(kept.Params, thread); failed {
+			for _, chunk := range codexMcpStartupRow(status, map[string]any{"codex_thread_id": thread, "codex_turn_id": turn}) {
+				emit(chunk)
+			}
+		}
+	}
 
 	for {
 		select {
@@ -247,7 +254,25 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 			if c.logger != nil && (msg.Method == "turn/started" || msg.Method == "turn/completed") {
 				c.logger.Debugf("codex app-server event method=%s thread=%s turn=%s nested_turn=%s", msg.Method, event.ThreadID, event.TurnID, event.Turn.ID)
 			}
+			// #4602: a failed MCP server start names no turn (often no thread);
+			// a hook run may name no turn.
+			if msg.Method == "mcpServer/startupStatus/updated" {
+				if status, failed := codexMcpStartupFailed(msg.Params, thread); failed {
+					for _, chunk := range codexMcpStartupRow(status, map[string]any{"codex_thread_id": thread, "codex_turn_id": turn}) {
+						emit(chunk)
+					}
+				}
+				continue
+			}
 			if event.ThreadID != thread {
+				continue
+			}
+			if msg.Method == "hook/completed" {
+				if event.TurnID == "" || event.TurnID == turn {
+					for _, chunk := range codexHookRow(msg.Params, map[string]any{"codex_thread_id": thread, "codex_turn_id": turn}) {
+						emit(chunk)
+					}
+				}
 				continue
 			}
 			// #3131: command items and output deltas of any turn of this
