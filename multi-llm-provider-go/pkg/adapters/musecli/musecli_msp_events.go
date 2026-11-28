@@ -59,6 +59,17 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 	}
 	items := map[string]*museMSPItem{}
 	toolStarts := map[string]time.Time{}
+	// retry is Muse's scheduled retry of a failed model attempt, shown until
+	// the model answers again or the turn ends (Muse sends no "recovered").
+	var retry *llmtypes.NativeRetry
+	endRetry := func(success bool) {
+		if retry == nil {
+			return
+		}
+		end := *retry
+		end.Phase, end.Success, retry = "end", success, nil
+		emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeNativeRetry, NativeRetry: &end, Metadata: meta(nil)})
+	}
 	// Each Muse message is its own reply block, so text written before a
 	// message the person sent mid-turn stays above it and the rest goes below.
 	blocks := map[string]bool{}
@@ -98,6 +109,9 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 					// A turn Muse runs on its own (a Monitor) while this one runs.
 					a.handleIdleMuseMSP(s, msg)
 					continue
+				}
+				if p.Item.Kind == "agentMessage" || p.Item.Kind == "reasoning" || p.Item.Kind == "toolCall" {
+					endRetry(true)
 				}
 				item := p.Item
 				items[item.ItemID] = &item
@@ -146,6 +160,7 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 				if item == nil {
 					continue
 				}
+				endRetry(true)
 				switch {
 				case item.Kind == "agentMessage" && (p.Field == "" || p.Field == "text"):
 					if !blocks[p.ItemID] {
@@ -186,6 +201,28 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 					s.usage = &p
 					s.mu.Unlock()
 				}
+			case "turn/retryScheduled", "turn/modelRetryScheduled":
+				var p struct {
+					TurnID       string `json:"turnId"`
+					Attempt      int    `json:"attempt"`
+					NextAttempt  int    `json:"nextAttempt"`
+					MaxAttempts  int    `json:"maxAttempts"`
+					RetryDelayMs int64  `json:"retryDelayMs"`
+				}
+				if json.Unmarshal(msg.Params, &p) != nil || (p.TurnID != "" && p.TurnID != turnID) {
+					continue
+				}
+				next := p.NextAttempt
+				if next <= 0 {
+					next = p.Attempt + 1
+				}
+				// Muse can report one retry at both the turn and the model layer.
+				if retry != nil && retry.Attempt == next {
+					continue
+				}
+				endRetry(false)
+				retry = &llmtypes.NativeRetry{Provider: "muse-cli", NativeSessionID: s.sessionID, NativeTurnID: turnID, Phase: "start", Attempt: next, MaxAttempts: p.MaxAttempts, DelayMS: p.RetryDelayMs}
+				emit(llmtypes.StreamChunk{Type: llmtypes.StreamChunkTypeNativeRetry, NativeRetry: retry, Metadata: meta(nil)})
 			case "turn/started":
 				var p struct {
 					TurnID string `json:"turnId"`
@@ -215,6 +252,7 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 					a.handleIdleMuseMSP(s, msg)
 					continue
 				}
+				endRetry(p.Terminal == "completed")
 				switch p.Terminal {
 				case "completed":
 				case "cancelled":
