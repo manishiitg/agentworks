@@ -4,6 +4,7 @@ import { useAuthStore } from '../../../stores/useAuthStore'
 import { openProjectAskConversation } from '../../../utils/projectAskConversation'
 import { openProjectInPlace } from '../../../utils/openProjectInPlace'
 import { getRawActiveWorkspaceId } from '../../../utils/desktopConnection'
+import { remoteProjectConnection } from '../../../utils/remoteSessions'
 import { WorkingTipsContext } from '../../../components/chat/workingTipsContext'
 import { BOTS_CHANGED_EVENT, botError, botsServer, callBot, listBots, setProjectBot, type Bot, type BotFunction, type BotProject } from './botsApi'
 import { useBotsPageStore, type BotChatFrom } from './botsPageStore'
@@ -27,15 +28,16 @@ function useBots() {
   return { ...state, retry: () => setRetry(value => value + 1) }
 }
 
-/** Open one of your server projects in place (on a Mac, through its sign-in to that server). */
-function openServerProject(projectId: string) {
-  const connection = botsServer()?.id ?? getRawActiveWorkspaceId()
+/** Open one of your projects in place: a project on this Mac here, a server project on its server (from a Mac,
+ * through its sign-in). */
+function openBotProject(projectId: string, mac?: boolean) {
+  const connection = mac ? getRawActiveWorkspaceId() : remoteProjectConnection(projectId) ?? botsServer()?.id ?? getRawActiveWorkspaceId()
   openProjectInPlace(connection, { surface: 'work', id: projectId })
 }
 
 /** Open a bot's chat as used in a project it was added to; Back returns to that project. */
 function openInProject(bot: string, project: BotProject) {
-  useBotsPageStore.getState().openChat(bot, { projectId: project.project_id, title: project.title })
+  useBotsPageStore.getState().openChat(bot, { projectId: project.project_id, title: project.title, mac: project.mac })
 }
 
 /**
@@ -72,7 +74,7 @@ function BotsDirectory() {
         <p className="mt-2 text-xs text-muted-foreground">Made an agent yourself? Open its menu in a project on the server and turn on Bot.</p>
       </div>}
       {bots && bots.length > 0 && <>
-        <p className="mb-3 text-sm text-muted-foreground">Add a bot to one of your projects to use it there, or reach it from your own AI apps.{server ? ` Add to a project lists your projects on ${server.name}.` : ''}</p>
+        <p className="mb-3 text-sm text-muted-foreground">Add a bot to one of your projects to use it there, or reach it from your own AI apps.{server ? ` Add to a project lists your projects on this Mac and on ${server.name}.` : ''}</p>
         <div className="grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(260px,1fr))]">
           {bots.map(bot => <DirectoryCard key={bot.id} bot={bot} targets={targets.filter(target => target.project_id !== bot.project_id)} />)}
         </div>
@@ -104,7 +106,7 @@ function DirectoryCard({ bot, targets }: { bot: Bot; targets: BotProject[] }) {
       {bot.mine ? <>
         <p className="text-[11px] text-muted-foreground">Yours, from {bot.project_title}. Change it from the agent's menu there. People you shared it with see it here.</p>
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <button type="button" onClick={() => openServerProject(bot.project_id)} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {bot.project_title}</button>
+          <button type="button" onClick={() => openBotProject(bot.project_id)} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {bot.project_title}</button>
           <McpButton open={mcp} toggle={() => setMcp(!mcp)} />
         </div>
       </> : <AddOrOpen bot={bot} targets={targets} inProjects={inProjects} mcp={<McpButton open={mcp} toggle={() => setMcp(!mcp)} />} />}
@@ -147,13 +149,13 @@ function AddOrOpen({ bot, targets, inProjects, mcp }: { bot: Bot; targets: BotPr
         <button type="button" disabled={busy} onClick={() => void change(project, false)} className="shrink-0 text-[11px] text-muted-foreground hover:text-destructive">Remove</button>
       </div>)}
       <p className="text-[11px] text-muted-foreground">Open it in {inProjects.length === 1 ? `${inProjects[0].title}'s` : 'the project\'s'} agent list to use it.</p>
-    </div> : <p className="text-[11px] text-muted-foreground">{targets.length ? 'To use it, add it to one of your projects. It shows in that project\'s agent list.' : 'To use it, add it to one of your projects on the server. You have none yet: make one, then come back.'}</p>}
+    </div> : <p className="text-[11px] text-muted-foreground">{targets.length ? 'To use it, add it to one of your projects. It shows in that project\'s agent list.' : 'To use it, add it to one of your projects. You have none yet: make one, then come back.'}</p>}
     <div className="mt-2 flex flex-wrap items-center gap-1.5">
       {inProjects.length > 0 && <button type="button" onClick={() => openInProject(bot.id, inProjects[0])} className="rounded-md border border-border px-2.5 py-1 text-xs hover:bg-muted">Open in {inProjects[0].title}</button>}
       {choices.length > 0 && <span className="flex min-w-0 gap-1">
         <select aria-label={`Add ${bot.name} to a project`} value={pick} onChange={event => setPick(event.target.value)} className="min-w-0 max-w-[10rem] rounded-md border border-input bg-background px-1 py-1 text-xs">
           <option value="">{inProjects.length ? 'Add to another…' : 'Add to a project…'}</option>
-          {choices.map(target => <option key={target.project_id} value={target.project_id}>{target.title}</option>)}
+          {choices.map(target => <option key={`${target.mac ? 'mac' : 'server'}:${target.project_id}`} value={target.project_id}>{target.title}{target.mac ? ' · this Mac' : ''}</option>)}
         </select>
         <button type="button" disabled={!picked || busy} onClick={() => picked && void change(picked, true)} className="rounded-md bg-primary px-2.5 py-1 text-xs text-primary-foreground disabled:opacity-50">{busy ? 'Adding…' : 'Add'}</button>
       </span>}
@@ -177,7 +179,7 @@ function BotChatPage({ botId, from }: { botId: string; from: BotChatFrom | null 
   const back = from?.title ? `Back to ${from.title}` : 'Back to the project'
   return <div className="flex h-full min-h-0 flex-col bg-background">
     <header className="flex min-h-12 shrink-0 items-center gap-2.5 border-b border-border px-3 py-1.5">
-      <button type="button" aria-label={back} title={back} onClick={() => { if (from) openServerProject(from.projectId); close(false) }} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
+      <button type="button" aria-label={back} title={back} onClick={() => { if (from) openBotProject(from.projectId, from.mac); close(false) }} className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"><ArrowLeft aria-hidden="true" className="h-4 w-4" /></button>
       <span aria-hidden="true" className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-base">{bot?.icon || '🤖'}</span>
       <div className="min-w-0 flex-1">
         <h1 className="truncate text-sm font-semibold">{bot?.name ?? 'Bot'}</h1>
