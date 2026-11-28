@@ -154,7 +154,7 @@ describe('AgentHeaderLine sharing pill', () => {
 
       await act(async () => sharedTrigger!.click())
       const reopenedForHide = document.body.querySelector('[role="dialog"][aria-label="Design"]')
-      const hideButton = [...(reopenedForHide?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Hide from sidebar'))
+      const hideButton = [...(reopenedForHide?.querySelectorAll('button') || [])].find(b => b.textContent?.includes('Archive'))
       expect(hideButton).toBeTruthy()
       await act(async () => hideButton!.click())
       expect(setSidebarHidden).toHaveBeenCalledWith(true)

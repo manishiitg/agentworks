@@ -25,9 +25,9 @@ export function SidebarHiddenAgents({ count, expanded, onToggle, children }: { c
   if (!count) return null
   return <>
     <button type="button" aria-expanded={expanded} onClick={onToggle} className={sidebarAgentDisclosureClass}>
-      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />Hidden agents · {count}
+      <ChevronRight aria-hidden="true" className={`h-3 w-3 transition-transform ${expanded ? 'rotate-90' : ''}`} />Archived · {count}
     </button>
-    {expanded && <div role="group" aria-label="Hidden agents">{children}</div>}
+    {expanded && <div role="group" aria-label="Archived agents">{children}</div>}
   </>
 }
 

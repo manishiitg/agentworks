@@ -1,7 +1,7 @@
 import { HeaderAgentSharing } from '../../products/work/ShareCrew'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, EyeOff, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
+import { Archive, ArchiveRestore, ArrowDown, ArrowUp, ChevronDown, Clock, Cloud, Eye, GitFork, Loader2, MailOpen, Pencil, SquareTerminal, Trash2, Webhook, Workflow, X } from 'lucide-react'
 import { create } from 'zustand'
 import { useChatStore } from '../../stores/useChatStore'
 import { AGENT_KEY, AgentPlaceMark, enabledAgentAutomations } from './AgentIcon'
@@ -274,7 +274,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
           {actions?.terminal && <button type="button" onClick={() => finish(actions.terminal!)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1.5 rounded-md py-1 text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><SquareTerminal aria-hidden className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Continue in my terminal</button>}
           {(onRename || (clickToOpen && actions?.rename)) && <button type="button" onClick={() => onRename ? finish(onRename) : setRenameDraft(actions?.renameDraft || info.name)} className={clickToOpen ? menuRow : 'inline-flex items-center gap-1 rounded-md py-1 text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'}><Pencil aria-hidden="true" className={`h-3.5 w-3.5 shrink-0 ${clickToOpen ? 'text-muted-foreground' : ''}`} />Rename</button>}
           {clickToOpen && actions?.setSidebarHidden && <button type="button" onClick={() => finish(() => actions.setSidebarHidden!(!sidebarHidden))} className={menuRow}>
-            {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Hide from sidebar</>}
+            {sidebarHidden ? <><ArchiveRestore aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Unarchive</> : <><Archive aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />Archive</>}
           </button>}
           {shareShortcut && !shareInfo && info.sharing && <button type="button" onClick={() => open('sharing')} className={clickToOpen ? menuRow : 'text-primary hover:underline'}>Share…</button>}
           {!info.sharing && info.onSharing && <button type="button" onClick={() => finish(info.onSharing!)} className={clickToOpen ? menuRow : 'text-primary hover:underline'}>{info.sharedWith ? 'Sharing…' : 'Share…'}</button>}
@@ -403,7 +403,7 @@ export function AgentActionsMenu({ name, actions, sidebarHidden, onMarkUnread, o
     {actions.moveUp && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveUp!)}><ArrowUp aria-hidden="true" className="h-3.5 w-3.5" />Move up</button>}
     {actions.moveDown && <button type="button" role="menuitem" className={item} onClick={() => run(actions.moveDown!)}><ArrowDown aria-hidden="true" className="h-3.5 w-3.5" />Move down</button>}
     {actions.setSidebarHidden && <button type="button" role="menuitem" className={item} onClick={() => run(() => actions.setSidebarHidden!(!sidebarHidden))}>
-      {sidebarHidden ? <><Eye aria-hidden="true" className="h-3.5 w-3.5" />Show in sidebar</> : <><EyeOff aria-hidden="true" className="h-3.5 w-3.5" />Hide from sidebar</>}
+      {sidebarHidden ? <><ArchiveRestore aria-hidden="true" className="h-3.5 w-3.5" />Unarchive</> : <><Archive aria-hidden="true" className="h-3.5 w-3.5" />Archive</>}
     </button>}
     {onRemove && <button type="button" role="menuitem" className={`${item} text-destructive`} onClick={() => run(onRemove)}><Trash2 aria-hidden="true" className="h-3.5 w-3.5" />Remove agent…</button>}
   </div>
