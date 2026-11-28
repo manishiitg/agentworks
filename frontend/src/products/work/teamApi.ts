@@ -395,7 +395,8 @@ export async function onlineAgentSideChats(profileId: string, projectId: string,
   const headers = { Authorization: `Bearer ${getAuthToken() || ''}` }
   let seen = onlineProjectsSeen.get(projectId)
   if (!seen || Date.now() - seen.at > 60_000) {
-    const reply = await fetch(`${base}/api/crew-teams/${encodeURIComponent(projectId)}/tab`, { headers })
+    // The server knows the Team by its server copy (binding.peer), not by this Mac project.
+    const reply = await fetch(`${base}/api/crew-teams/${encodeURIComponent(binding.peer)}/tab`, { headers })
     const view = reply.ok ? await reply.json() as TeamTabView : undefined
     seen = { at: Date.now(), projects: (view?.online_projects || []).filter(item => item.can_make_agents && item.project_id) }
     onlineProjectsSeen.set(projectId, seen)
