@@ -73,7 +73,7 @@ profile:
         options:
           reasoning_effort: max
       - id: agy-cli
-        label: Antigravity CLI (Alpha)
+        label: Antigravity CLI
         provider: agy-cli
         model_id: gemini-4-hydrogen-high
         reasoning_efforts: [low, medium, high, xhigh]

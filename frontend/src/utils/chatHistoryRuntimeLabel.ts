@@ -19,7 +19,7 @@ export function providerShortLabel(providerId: string): string {
     'gemini-cli': 'Gemini',
     'muse-cli': 'Muse',
     'pi-cli': 'Pi',
-    'agy-cli': 'AGY (Alpha)',
+    'agy-cli': 'AGY',
   }
   return knownLabels[provider.toLowerCase()] || provider.replace(/[-_](cli|code)$/i, '')
 }
