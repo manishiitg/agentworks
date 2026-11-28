@@ -225,7 +225,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	f, _ := newExternalCrewCommandFixture(t)
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("AUTH_SECRET", "goal-query-test")
-	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,muse-cli")
+	t.Setenv("SUPPORTED_LLM_PROVIDERS", "codex-cli,cursor-cli")
 	t.Setenv("LLM_CONFIG_LOCKED", "")
 	t.Setenv("AGENTWORKS_PROVIDER_POLICY", "")
 	var err error
@@ -276,25 +276,25 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	codexReq := req
 	// Owner live regression: an unsupported /goal is information, not a failed
 	// native turn. Check the same admitted HTTP and internal/MCP input paths.
-	muse := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "muse-cli", "display_name": "Muse test account", "auth_method": "cli_login"})
+	cursor := (&providerAccountsEnv{api: f.api}).addAccount(t, "owner", map[string]interface{}{"provider": "cursor-cli", "display_name": "Cursor test account", "auth_method": "cli_login"})
 	profile, err := f.api.agentProfiles.Resolve(crewProfileID, 0, "owner")
 	if err != nil {
 		t.Fatal(err)
 	}
-	museModel := ""
+	otherModel := ""
 	for _, option := range profile.Runtime.ProviderOptions {
-		if option.Provider == "muse-cli" {
-			museModel = option.ModelID
+		if option.Provider == "cursor-cli" {
+			otherModel = option.ModelID
 			break
 		}
 	}
-	if museModel == "" {
-		t.Fatal("fixture Crew does not offer Muse")
+	if otherModel == "" {
+		t.Fatal("fixture Crew does not offer Cursor")
 	}
-	req.Provider, req.ModelID, req.ConnectionID, req.Query = "muse-cli", museModel, muse.ID, "/goal Task"
+	req.Provider, req.ModelID, req.ConnectionID, req.Query = "cursor-cli", otherModel, cursor.ID, "/goal Task"
 	req.LLMConfigSource = llmConfigSourceAgentProfile // the same saved project selection the composer submits
-	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "muse-cli", ModelID: museModel}}
-	museReq := req
+	req.LLMConfig = &orchestrator.LLMConfig{Primary: orchestrator.LLMModel{Provider: "cursor-cli", ModelID: otherModel}}
+	otherReq := req
 	info := send("owner")
 	var notice struct {
 		Status  string `json:"status"`
@@ -316,7 +316,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 		t.Fatal("internal goal notice failed", result, err)
 	}
 	capabilities := nativeGoalProgramCapabilities()
-	if !capabilities["codex-cli"] || capabilities["muse-cli"] || !capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || !capabilities["agy-cli"] {
+	if !capabilities["codex-cli"] || !capabilities["muse-cli"] || !capabilities["claude-code"] || capabilities["cursor-cli"] || capabilities["pi-cli"] || !capabilities["agy-cli"] {
 		t.Fatal("server offered unsupported native goals", capabilities)
 	}
 	state, err := f.api.latestNativeGoal(context.Background(), sid)
@@ -335,7 +335,7 @@ func TestNativeGoalQueryControlsUseNormalChatAndAccountAdmission(t *testing.T) {
 	}
 	// Owner live report: a goal left from Codex stayed pinned after the chat moved to another program, because Clear's
 	// /goal clear was refused there. Clear removes it (Builder only); the program is never asked.
-	req = museReq
+	req = otherReq
 	req.Query, req.PinRunMode = "/goal clear", true
 	if denied := send("owner"); denied.Code != http.StatusForbidden || !strings.Contains(denied.Body.String(), "chat's Builder") {
 		t.Fatalf("Run person cleared another program's goal: %d %s", denied.Code, denied.Body.String())

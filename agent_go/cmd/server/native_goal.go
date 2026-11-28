@@ -205,7 +205,7 @@ func (api *StreamingAPI) answerNativeGoalCommand(w http.ResponseWriter, sessionI
 
 // Program support is a backend fact, shared by admission and composer metadata.
 func nativeGoalSupported(provider string) bool {
-	return provider == "codex-cli" || turnGoalProvider(provider)
+	return provider == "codex-cli" || provider == "muse-cli" || turnGoalProvider(provider)
 }
 func nativeGoalProgramCapabilities() map[string]bool {
 	out := make(map[string]bool, len(supportedLLMProviders))

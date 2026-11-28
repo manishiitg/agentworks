@@ -19,7 +19,7 @@ func TestAgyGoalCommandsAnsweredByAgentWorks(t *testing.T) {
 	sid := "agy-goal-commands"
 	api, store := newDurableChatAPI(t, sid, "owner")
 	store.SetEventPreparer(api.prepareNativeGoalEvent)
-	if !nativeGoalSupported("agy-cli") || !nativeGoalSupported("codex-cli") || !nativeGoalSupported("claude-code") || nativeGoalSupported("cursor-cli") {
+	if !nativeGoalSupported("agy-cli") || !nativeGoalSupported("codex-cli") || !nativeGoalSupported("claude-code") || !nativeGoalSupported("muse-cli") || nativeGoalSupported("cursor-cli") {
 		t.Fatal("goal programs changed")
 	}
 	run := func(action string) (bool, string, llmtypes.NativeGoalCommand) {

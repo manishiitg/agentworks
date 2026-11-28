@@ -14,6 +14,7 @@ import (
 	"github.com/manishiitg/multi-llm-provider-go/llmerrors"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/codexcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 )
 
 type nativeGoalRestoreRecord struct {
@@ -29,7 +30,13 @@ type nativeGoalRestoreContextKey struct{}
 
 // The native RPC is the external boundary; all projection and restore decisions
 // below operate on real accepted chat state, not model output or UI hints.
-var controlNativeGoal = codexcli.ControlCodexNativeGoal
+var controlNativeGoal = func(ctx context.Context, sessionID, action string) (*llmtypes.NativeGoalUpdate, error) {
+	// A chat on Muse's `muse serve` answers for its own goal; every other goal chat is Codex.
+	if update, ok, err := musecli.ControlMuseNativeGoal(ctx, sessionID, action); ok {
+		return update, err
+	}
+	return codexcli.ControlCodexNativeGoal(ctx, sessionID, action)
+}
 
 func nativeGoalUpdateFromEvent(event *storeevents.Event) (*llmtypes.NativeGoalUpdate, bool) {
 	if event == nil || event.Type != "native_goal_updated" || event.Data == nil {

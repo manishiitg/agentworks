@@ -8,6 +8,7 @@ package musecli
 
 import (
 	"context"
+	"strings"
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
@@ -51,6 +52,11 @@ func (a *MuseCLIAdapter) GenerateContent(ctx context.Context, messages []llmtype
 		return nil, err
 	}
 
+	msp := MuseMSPSelected() && !museTmuxTransportRequested(opts) && !museStructuredTransportRequested(opts)
+	if _, goal := llmtypes.NativeGoalCommandForSession(ctx, strings.TrimSpace(museInteractiveSessionIDFromOptions(opts))); goal && !msp {
+		// Muse's goal is a `muse serve` feature; the other lanes never get /goal as a prompt.
+		return nil, llmtypes.NativeGoalUnavailable("this Muse connection")
+	}
 	if museStructuredTransportRequested(opts) {
 		return a.generateContentExec(ctx, messages, options...)
 	}

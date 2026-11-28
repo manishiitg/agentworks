@@ -86,6 +86,10 @@ func (a *MuseCLIAdapter) consumeMuseMSPTurn(ctx context.Context, s *museMSPSessi
 				continue
 			}
 			switch msg.Method {
+			case "session/goalChanged":
+				if update, ok := observeMuseMSPGoal(s, msg); ok {
+					emit(llmtypes.NativeGoalChunk(update))
+				}
 			case "session/todoListChanged":
 				var owner struct {
 					SessionID string `json:"sessionId"`
@@ -701,6 +705,8 @@ func (a *MuseCLIAdapter) handleIdleMuseMSP(s *museMSPSession, msg museRPCMessage
 		return
 	}
 	switch msg.Method {
+	case "session/goalChanged":
+		observeMuseMSPGoal(s, msg)
 	case "usage/changed":
 		var p museMSPPlanUsage
 		if json.Unmarshal(msg.Params, &p) == nil {

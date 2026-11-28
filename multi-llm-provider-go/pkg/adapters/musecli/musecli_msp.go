@@ -71,6 +71,11 @@ type museMSPSession struct {
 	// this new session starts empty and its first turn carries the kept
 	// conversation as text.
 	startedFresh bool
+	// goal is Muse's goal as its last session/goalChanged said (nil: none);
+	// goalCommand is a /goal set or resume this run sends once its turn starts.
+	goal        *llmtypes.NativeGoal
+	goalKnown   bool
+	goalCommand *llmtypes.NativeGoalCommand
 	// instructions: what this session was given of the AgentWorks
 	// instructions; Muse has no place for them outside messages.
 	instructions         instructions.Tracker
@@ -559,11 +564,34 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	if llmtypes.CodingProviderIdleCompactFromOptions(opts) {
 		return a.compactMuseMSP(ctx, s, emit)
 	}
+	goalCommand, hasGoal := llmtypes.NativeGoalCommandForSession(ctx, owner)
+	s.goalCommand = nil
+	if hasGoal && (goalCommand.Action == "show" || goalCommand.Action == "pause" || goalCommand.Action == "clear") {
+		update, goalErr := controlMuseMSPGoal(ctx, s, goalCommand.Action)
+		if goalErr != nil {
+			return nil, goalErr
+		}
+		emit(llmtypes.NativeGoalChunk(*update))
+		return a.museMSPResponse(s, "", "", "", 0, 0, 0, 0), nil
+	}
 	resumed := resumeID != "" && !s.startedFresh
 	s.startedFresh = false
 	system, human, err := museMSPPrompt(ctx, owner, messages, resumed)
 	if err != nil {
 		return nil, err
+	}
+	if hasGoal {
+		s.mu.Lock()
+		current := s.goal
+		s.mu.Unlock()
+		goalText, goalErr := museMSPGoalTurnText(goalCommand, current)
+		if goalErr != nil {
+			return nil, goalErr
+		}
+		// The person's "/goal ..." becomes the goal turn's message; goal/set or goal/resume follows once it starts.
+		human = goalText
+		command := goalCommand
+		s.goalCommand = &command
 	}
 	// Muse has no separate place for instructions: they go in a message, once
 	// per session, then only what changed (they used to go with every message).
@@ -587,7 +615,9 @@ func (a *MuseCLIAdapter) generateContentMSP(ctx context.Context, messages []llmt
 	if prompt != "" {
 		input = append(input, map[string]any{"type": "text", "text": prompt})
 	}
-	if part, skillErr := museSkillInput(ctx, owner, s.sessionID, s.listSkills); skillErr != nil {
+	if part, skillErr := museSkillInput(ctx, owner, s.sessionID, s.listSkills); hasGoal {
+		// A goal turn carries no skill.
+	} else if skillErr != nil {
 		return nil, skillErr
 	} else if part != nil {
 		input = append(input, part)
@@ -641,6 +671,18 @@ func (a *MuseCLIAdapter) runMuseMSPTurns(ctx context.Context, s *museMSPSession,
 		s.lastForegroundTurnID = started.TurnID
 		delete(s.wake, started.TurnID)
 		s.mu.Unlock()
+		if command := s.goalCommand; command != nil {
+			s.goalCommand = nil
+			if err := museMSPGoalCall(ctx, s, command.Action, strings.TrimSpace(command.Objective)); err != nil {
+				interruptCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				_ = s.rpc.call(interruptCtx, "turn/interrupt", map[string]any{"commandId": museCommandID(), "sessionId": s.sessionID, "turnId": started.TurnID}, nil)
+				cancel()
+				s.mu.Lock()
+				s.turnID = ""
+				s.mu.Unlock()
+				return nil, err
+			}
+		}
 		if totals.followups == 0 {
 			llmtypes.SignalPromptAccepted(opts.StreamChan)
 		} else {
@@ -664,7 +706,32 @@ func (a *MuseCLIAdapter) runMuseMSPTurns(ctx context.Context, s *museMSPSession,
 		}
 		missed := a.museMSPMissedSteers(ctx, s, events)
 		if len(missed) == 0 {
-			return response, nil
+			// Muse keeps working on an active goal in turns of its own: follow them in this reply.
+			finished := started.TurnID
+			for {
+				next := a.museMSPNextGoalTurn(ctx, s, events, finished, emit)
+				if next == "" {
+					return response, nil
+				}
+				log.Printf("[AGENT_GOAL] session=%s provider=muse-cli native=%s action=followed turn=%s", owner, s.sessionID, next)
+				totals.followups++
+				s.mu.Lock()
+				s.turnID, s.lastForegroundTurnID = next, next
+				s.mu.Unlock()
+				goalResponse, goalErr := a.consumeMuseMSPTurn(ctx, s, events, next, totals, opts, emit)
+				s.mu.Lock()
+				s.turnID = ""
+				s.mu.Unlock()
+				if goalErr != nil {
+					if errors.Is(goalErr, context.Canceled) || errors.Is(goalErr, context.DeadlineExceeded) {
+						interruptCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+						_ = s.rpc.call(interruptCtx, "turn/interrupt", map[string]any{"commandId": museCommandID(), "sessionId": s.sessionID, "turnId": next}, nil)
+						cancel()
+					}
+					return goalResponse, goalErr
+				}
+				response, finished = goalResponse, next
+			}
 		}
 		log.Printf("[MUSE_MSP] steer handover session=%s owner=%s finished_turn=%s missed=%d: the turn ended before reading them, running them as the next turn", s.sessionID, owner, started.TurnID, len(missed))
 		totals.followups++
