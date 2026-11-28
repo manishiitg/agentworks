@@ -141,7 +141,15 @@ it('opens Projects from the sidebar and keeps browsing, pins and recent shortcut
     expect(moreToggle.getAttribute('aria-expanded')).toBe('false')
     await act(async () => moreToggle.click())
     expect(moreToggle.getAttribute('aria-expanded')).toBe('true')
+    const macGroupToggle = [...side().querySelectorAll('button')].find(b => b.textContent?.includes('This Mac'))!
+    const serverGroupToggle = [...side().querySelectorAll('button')].find(b => b.textContent?.includes('Team space'))!
+    expect(macGroupToggle.getAttribute('aria-expanded')).toBe('false')
+    expect(serverGroupToggle.getAttribute('aria-expanded')).toBe('false')
+    await act(async () => macGroupToggle.click())
     expect(side().textContent).toContain('Beta')
+    expect(side().textContent).not.toContain('Gamma')
+    await act(async () => serverGroupToggle.click())
+    expect(side().textContent).toContain('Gamma')
     await act(async () => moreToggle.click())
     expect(side().textContent).not.toContain('Beta')
 

@@ -35,7 +35,7 @@ import { TeamInvites } from './TeamInviteRow'
 import { useCrewAgentsStore } from '../chat/AgentCard'
 import { SidebarAgentLayout, SidebarCrewAgents, SidebarHiddenAgents } from './SidebarCrewAgents'
 import { sidebarAgentDisclosureClass, sidebarAgentListClass } from './sidebarAgentLayout'
-import { ArrowLeftRight, ChevronRight, Cloud, ListPlus, Pin, Search } from 'lucide-react'
+import { ArrowLeftRight, ChevronRight, Cloud, Laptop, ListPlus, Pin, Search } from 'lucide-react'
 import { SidebarSectionBlock, hasDraggedProject, readDraggedProjectKey } from './SidebarSectionBlock'
 import { agentTeamShareFromRow } from '../chat/AgentInTeamMark'
 import { useSidebarExpansionStore, sidebarExpansionKey } from '../../stores/useSidebarExpansionStore'
@@ -120,6 +120,7 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
   const [pinnedDragOver, setPinnedDragOver] = useState(false)
   const [recentDragOver, setRecentDragOver] = useState(false)
   const [moreProjectsOpen, setMoreProjectsOpen] = useState(false)
+  const [openMoreSources, setOpenMoreSources] = useState<Record<string, boolean>>({})
   const [sidebarMode, setSidebarMode] = useState<SidebarViewMode>(() => readSidebarViewMode(historyScope))
   const selectSidebarMode = (next: SidebarViewMode) => {
     setSidebarMode(next)
@@ -276,6 +277,14 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
       return undefined
     }
     const moreActivity = sectionActivity(moreRows)
+    const moreSourceGroups = connections
+      .map(connection => ({
+        id: connection.id,
+        name: connection.id === 'local' ? 'This Mac' : (connection.name || 'Server'),
+        isLocal: connection.id === 'local',
+        projects: moreRows.filter(project => project.connection.id === connection.id),
+      }))
+      .filter(group => group.projects.length > 0)
     return <div className="flex min-h-0 flex-1 flex-col" aria-label="Connected work">
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3" data-sidebar-project-scroll onPointerDownCapture={() => markSidebarInteraction()}>
         {top}
@@ -408,7 +417,34 @@ function ProjectMenu({ children, top, projects, directory }: ProjectMenuProps & 
               {pinnedRows.length === 0 && resolvedSections.length === 0 && recentRows.length === 0 && headerControls}
             </div>
             {moreProjectsOpen && <div className="space-y-1">
-              {moreRows.map(project => renderProject(project, false))}
+              {moreSourceGroups.length > 1 ? moreSourceGroups.map(group => {
+                const sourceOpen = Boolean(openMoreSources[group.id])
+                const sourceActivity = sectionActivity(group.projects)
+                return <div key={group.id} className="space-y-0.5 pl-2">
+                  <button
+                    type="button"
+                    onClick={() => setOpenMoreSources(prev => ({ ...prev, [group.id]: !prev[group.id] }))}
+                    aria-expanded={sourceOpen}
+                    className="flex w-full min-w-0 items-center gap-1.5 rounded px-1.5 py-0.5 text-left text-xs font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <ChevronRight className={`h-3 w-3 shrink-0 transition-transform ${sourceOpen ? 'rotate-90' : ''}`} aria-hidden="true" />
+                    {group.isLocal
+                      ? <Laptop className="h-3 w-3 shrink-0 text-muted-foreground/80" aria-hidden="true" />
+                      : <Cloud className="h-3 w-3 shrink-0 text-primary/80" aria-hidden="true" />}
+                    <span className="truncate">{group.name}</span>
+                    <span className="shrink-0 text-[11px] tabular-nums opacity-70">{group.projects.length}</span>
+                    {!sourceOpen && sourceActivity && (
+                      <span
+                        aria-label={sourceActivity === 'running' ? 'Running' : 'Needs your input'}
+                        className={`ml-0.5 h-1.5 w-1.5 shrink-0 rounded-full ${sourceActivity === 'running' ? 'bg-blue-500' : 'bg-amber-500'}`}
+                      />
+                    )}
+                  </button>
+                  {sourceOpen && <div className="space-y-1 pl-1">
+                    {group.projects.map(project => renderProject(project, false))}
+                  </div>}
+                </div>
+              }) : moreRows.map(project => renderProject(project, false))}
             </div>}
           </section>}
 
