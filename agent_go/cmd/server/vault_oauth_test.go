@@ -80,8 +80,8 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 		t.Fatal("wrong resource metadata")
 	}
 	as := decode(request("GET", vaultAuthorizationMetadataPath, "", ""), 200)
-	if as["issuer"] != "https://platform.example/vault" {
-		t.Fatal("wrong issuer")
+	if as["issuer"] != "https://platform.example/vault" || as["client_id_metadata_document_supported"] != true {
+		t.Fatalf("wrong vault AS metadata: %+v", as)
 	}
 	client := decode(request("POST", vaultOAuthPrefix+"/register", `{"client_name":"Claude","redirect_uris":["http://127.0.0.1:4321/callback"]}`, ""), 201)["client_id"].(string)
 	verifier := strings.Repeat("a", 43)
@@ -183,5 +183,32 @@ func TestVaultOAuthIndividualIdentityRefreshAndRevocation(t *testing.T) {
 	}
 	if w := refresh(renewed, resource); w.Code != 400 {
 		t.Fatal("revoked grant refreshed")
+	}
+}
+
+func TestCopyMCPProtocolHeaders(t *testing.T) {
+	src := http.Header{}
+	src.Set("Content-Type", "application/json")
+	src.Set("Accept", "application/json, text/event-stream")
+	src.Set("Mcp-Protocol-Version", "2026-07-28")
+	src.Set("Mcp-Method", "tools/call")
+	src.Set("Mcp-Name", "echo")
+	src.Set("Mcp-Param-Workspace", "w1")
+	src.Set("Authorization", "Bearer user-secret")
+	src.Set("Cookie", "session=abc")
+	src.Set("X-CapLayer-Actor", "spoofed")
+
+	dst := http.Header{}
+	copyMCPProtocolHeaders(dst, src)
+
+	for _, want := range []string{"Content-Type", "Accept", "Mcp-Protocol-Version", "Mcp-Method", "Mcp-Name", "Mcp-Param-Workspace"} {
+		if dst.Get(want) != src.Get(want) {
+			t.Fatalf("header %s = %q, want %q", want, dst.Get(want), src.Get(want))
+		}
+	}
+	for _, blocked := range []string{"Authorization", "Cookie", "X-CapLayer-Actor"} {
+		if dst.Get(blocked) != "" {
+			t.Fatalf("blocked header %s leaked: %q", blocked, dst.Get(blocked))
+		}
 	}
 }

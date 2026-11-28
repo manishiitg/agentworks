@@ -72,7 +72,8 @@ func (s *Server) HandleMetadata(w http.ResponseWriter, r *http.Request) {
 		"token_endpoint": origin + s.cfg.TokenPath, "registration_endpoint": origin + s.cfg.RegisterPath,
 		"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"none"},
-		"scopes_supported": s.cfg.Scopes,
+		"scopes_supported":                      s.cfg.Scopes,
+		"client_id_metadata_document_supported": true,
 	})
 }
 
@@ -183,10 +184,27 @@ func (s *Server) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer store.Close()
-	client, err := store.Client(r.Context(), clientID)
-	if err != nil || !slices.Contains(client.RedirectURIs, redirect) {
-		oauthError(w, http.StatusBadRequest, "invalid_client")
-		return
+	var client Client
+	if IsClientIDMetadataURL(clientID) {
+		resolver := s.cfg.CIMDResolver
+		if resolver == nil {
+			resolver = DefaultCIMDResolver
+		}
+		client, err = resolver.Resolve(r.Context(), clientID)
+		if err != nil || !slices.Contains(client.RedirectURIs, redirect) {
+			oauthError(w, http.StatusBadRequest, "invalid_client")
+			return
+		}
+		if err = store.UpsertClient(r.Context(), client); err != nil {
+			oauthError(w, http.StatusServiceUnavailable, "server_error")
+			return
+		}
+	} else {
+		client, err = store.Client(r.Context(), clientID)
+		if err != nil || !slices.Contains(client.RedirectURIs, redirect) {
+			oauthError(w, http.StatusBadRequest, "invalid_client")
+			return
+		}
 	}
 	id, err := store.SaveRequest(r.Context(), AuthRequest{ClientID: clientID, RedirectURI: redirect, Resource: resource, State: state, Scopes: scopes, Challenge: challenge, ExpiresUnix: time.Now().Add(10 * time.Minute).Unix()})
 	if err != nil {
@@ -286,6 +304,10 @@ func (s *Server) HandleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientID := r.PostForm.Get("client_id")
+	if IsClientIDMetadataURL(clientID) && (r.PostForm.Get("client_secret") != "" || r.Header.Get("Authorization") != "") {
+		oauthError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
 	store, err := s.cfg.OpenStore()
 	if err != nil {
 		oauthError(w, http.StatusServiceUnavailable, "server_error")

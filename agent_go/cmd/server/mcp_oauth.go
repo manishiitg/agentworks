@@ -12,7 +12,12 @@ import (
 	"time"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/accesstokens"
+	"github.com/manishiitg/coding-agent-loop/mcpoauth"
 )
+
+// mcpOAuthCIMDResolver resolves HTTPS URL client_ids via SEP-991 Client ID
+// Metadata Documents. Tests may swap this with a loopback-capable resolver.
+var mcpOAuthCIMDResolver = mcpoauth.DefaultCIMDResolver
 
 const mcpOAuthProtectedResourcePath = "/.well-known/oauth-protected-resource/api/external/v1/mcp"
 const mcpOAuthMetadataPath = "/.well-known/oauth-authorization-server"
@@ -86,7 +91,8 @@ func (api *StreamingAPI) handleMCPOAuthMetadata(w http.ResponseWriter, r *http.R
 		"token_endpoint": origin + mcpOAuthTokenPath, "registration_endpoint": origin + mcpOAuthRegisterPath,
 		"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"},
 		"code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"none"},
-		"scopes_supported": mcpOAuthAdvertisedScopes(),
+		"scopes_supported":                      mcpOAuthAdvertisedScopes(),
+		"client_id_metadata_document_supported": true,
 	})
 }
 
@@ -280,10 +286,28 @@ func (api *StreamingAPI) handleMCPOAuthAuthorize(w http.ResponseWriter, r *http.
 		return
 	}
 	defer store.Close()
-	client, err := store.Client(r.Context(), clientID)
-	if err != nil || !slices.Contains(client.RedirectURIs, redirect) {
-		mcpOAuthError(w, http.StatusBadRequest, "invalid_client")
-		return
+	var client mcpOAuthClient
+	if mcpoauth.IsClientIDMetadataURL(clientID) {
+		resolver := mcpOAuthCIMDResolver
+		if resolver == nil {
+			resolver = mcpoauth.DefaultCIMDResolver
+		}
+		resolved, resolveErr := resolver.Resolve(r.Context(), clientID)
+		if resolveErr != nil || !slices.Contains(resolved.RedirectURIs, redirect) {
+			mcpOAuthError(w, http.StatusBadRequest, "invalid_client")
+			return
+		}
+		client = mcpOAuthClient{ID: resolved.ID, Name: resolved.Name, RedirectURIs: resolved.RedirectURIs}
+		if err := store.UpsertClient(r.Context(), client); err != nil {
+			mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")
+			return
+		}
+	} else {
+		client, err = store.Client(r.Context(), clientID)
+		if err != nil || !slices.Contains(client.RedirectURIs, redirect) {
+			mcpOAuthError(w, http.StatusBadRequest, "invalid_client")
+			return
+		}
 	}
 	id, err := store.SaveRequest(r.Context(), mcpOAuthRequest{ClientID: clientID, RedirectURI: redirect, Resource: resource, State: state, Scopes: scopes, Challenge: challenge, ExpiresAt: time.Now().Add(10 * time.Minute)})
 	if err != nil {
@@ -436,6 +460,10 @@ func (api *StreamingAPI) handleMCPOAuthToken(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	clientID := r.PostForm.Get("client_id")
+	if mcpoauth.IsClientIDMetadataURL(clientID) && (r.PostForm.Get("client_secret") != "" || r.Header.Get("Authorization") != "") {
+		mcpOAuthError(w, http.StatusUnauthorized, "invalid_client")
+		return
+	}
 	store, err := openMCPOAuthStore()
 	if err != nil {
 		mcpOAuthError(w, http.StatusServiceUnavailable, "server_error")

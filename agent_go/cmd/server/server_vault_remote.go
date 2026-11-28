@@ -555,11 +555,7 @@ func (api *StreamingAPI) handleServerVaultMCP(w http.ResponseWriter, r *http.Req
 			pr.Out.URL.RawQuery = ""
 			pr.Out.Host = target.Host
 			headers := make(http.Header)
-			for _, key := range []string{"Content-Type", "Accept", "Mcp-Session-Id", "Mcp-Protocol-Version", "Last-Event-Id"} {
-				if value := r.Header.Get(key); value != "" {
-					headers.Set(key, value)
-				}
-			}
+			copyMCPProtocolHeaders(headers, r.Header)
 			headers.Set("Authorization", "Bearer "+c.Token)
 			pr.Out.Header = headers
 		},

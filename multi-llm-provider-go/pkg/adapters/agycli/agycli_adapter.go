@@ -9,7 +9,6 @@ import (
 
 	"github.com/manishiitg/multi-llm-provider-go/interfaces"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
-	"github.com/manishiitg/multi-llm-provider-go/pkg/codingready"
 )
 
 // AgyCLIAdapter drives the Antigravity CLI (`agy`). Turns route by lane:
@@ -121,11 +120,6 @@ func (a *AgyCLIAdapter) generateContentInteractive(ctx context.Context, messages
 		}
 	}
 	mcpJSON := agyStringMetadata(opts, MetadataKeyMCPConfig)
-	if mcpJSON != "" && opts != nil && opts.Metadata != nil && opts.Metadata.Custom != nil {
-		if readyFile := codingready.MCPReadyFileFromMetadata(opts.Metadata.Custom); strings.TrimSpace(readyFile) != "" {
-			_ = codingready.WaitForMCPReadyFile(ctx, readyFile, codingready.MCPReadyWait())
-		}
-	}
 	resumeConversation := agyStringMetadata(opts, MetadataKeyResumeSessionID)
 	toolMode, err := agyToolModeForLaunch(opts)
 	if err != nil {

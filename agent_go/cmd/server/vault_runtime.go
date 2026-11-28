@@ -560,11 +560,7 @@ func vaultGatewayMCPProxy(target *url.URL, secret, runtimePath string, in vaultD
 		pr.Out.URL.RawPath = ""
 		pr.Out.URL.RawQuery = ""
 		headers := make(http.Header)
-		for _, name := range []string{"Content-Type", "Accept", "Mcp-Session-Id", "Mcp-Protocol-Version", "Last-Event-Id"} {
-			if value := r.Header.Get(name); value != "" {
-				headers.Set(name, value)
-			}
-		}
+		copyMCPProtocolHeaders(headers, r.Header)
 		headers.Set("Authorization", "Bearer "+secret)
 		headers.Set("X-CapLayer-Actor", in.Person)
 		headers.Set("X-Vault-Platform-User", "1")

@@ -116,6 +116,7 @@ func (api *StreamingAPI) handleVaultOAuthMetadata(w http.ResponseWriter, r *http
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"issuer": origin + "/vault", "authorization_endpoint": origin + cfg.AuthorizePath, "token_endpoint": origin + cfg.TokenPath, "registration_endpoint": origin + cfg.RegisterPath,
 		"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code", "refresh_token"}, "code_challenge_methods_supported": []string{"S256"}, "token_endpoint_auth_methods_supported": []string{"none"}, "scopes_supported": cfg.Scopes,
+		"client_id_metadata_document_supported": true,
 	})
 }
 
@@ -139,9 +140,7 @@ func (api *StreamingAPI) handleExternalVaultMCP(w http.ResponseWriter, r *http.R
 		pr.Out.URL.Path = strings.TrimRight(target.Path, "/") + "/api/admin/runtime/external-mcp"
 		pr.Out.URL.RawPath, pr.Out.URL.RawQuery = "", ""
 		pr.Out.Header = make(http.Header)
-		for _, key := range []string{"Content-Type", "Accept", "Mcp-Protocol-Version"} {
-			pr.Out.Header.Set(key, r.Header.Get(key))
-		}
+		copyMCPProtocolHeaders(pr.Out.Header, r.Header)
 		pr.Out.Header.Set("Authorization", "Bearer "+secret)
 		pr.Out.Header.Set("X-CapLayer-Actor", grant.UserID)
 		pr.Out.Header.Set("X-Vault-Platform-User", "1")
@@ -155,4 +154,20 @@ func (api *StreamingAPI) handleExternalVaultMCP(w http.ResponseWriter, r *http.R
 	}, ErrorHandler: func(w http.ResponseWriter, _ *http.Request, _ error) { http.Error(w, "Vault unavailable", 502) }}
 	w.Header().Set("Cache-Control", "no-store")
 	proxy.ServeHTTP(w, r)
+}
+
+// copyMCPProtocolHeaders copies only safe MCP Streamable HTTP headers (including
+// 2026-07-28 SEP-2243 Mcp-Method, Mcp-Name, and Mcp-Param-* headers) across
+// Vault MCP reverse proxies without forwarding auth, cookies, or actor headers.
+func copyMCPProtocolHeaders(dst, src http.Header) {
+	for _, key := range []string{"Content-Type", "Accept", "Mcp-Session-Id", "Mcp-Protocol-Version", "Mcp-Method", "Mcp-Name", "Last-Event-Id"} {
+		if value := src.Get(key); value != "" {
+			dst.Set(key, value)
+		}
+	}
+	for key, values := range src {
+		if strings.HasPrefix(key, "Mcp-Param-") && len(values) > 0 {
+			dst[key] = append([]string(nil), values...)
+		}
+	}
 }
