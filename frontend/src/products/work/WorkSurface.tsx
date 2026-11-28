@@ -1329,7 +1329,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
   }, [projectConfigRefreshToken, refresh])
   const [creating, setCreating] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
-  const [pickingStartChat, setPickingStartChat] = useState(false)
+  // Import a chat: from one chosen folder on New project, or from every folder on an empty project without one.
+  const [pickingStartChat, setPickingStartChat] = useState<string | boolean>(false)
   const startWorkspace = useWorkspaceConnectionStore(state => state.profiles.find(profile => profile.id === state.activeWorkspaceId))
   // An existing folder can be chosen only in the app on this computer; elsewhere the server makes the folder.
   const startCanChooseFolder = isLocalDeployment() && getActiveWorkspaceProfile().type === 'local'
@@ -1941,7 +1942,8 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
         reduced
         activityMonitorInWorkspace={Boolean(selected) && !showProviders && !showSchedulesOverview && !adminPage}
       />
-      {pickingStartChat && <LocalChatPicker allFolders onClose={() => setPickingStartChat(false)} onSelected={chat => { if (chat.folder) void createProject('', '', undefined, undefined, undefined, chat.folder, chat) }} />}
+      {typeof pickingStartChat === 'string' && <LocalChatPicker folder={pickingStartChat} onClose={() => setPickingStartChat(false)} onSelected={chat => { void createProject('', '', undefined, undefined, undefined, pickingStartChat, chat) }} />}
+      {pickingStartChat === true && <LocalChatPicker allFolders onClose={() => setPickingStartChat(false)} onSelected={chat => { if (chat.folder) void createProject('', '', undefined, undefined, undefined, chat.folder, chat) }} />}
       <ConfirmationDialog
         isOpen={deleteCandidate !== null}
         onClose={() => { if (!deletingProjectId) setDeleteCandidate(null) }}
@@ -1977,7 +1979,7 @@ function WorkSurfaceContent({ product }: { product: ProjectProductConfig }) {
                 <StartPage mode="new" place={startPlace} canChooseFolder={startCanChooseFolder} submitting={creating} error={createError}
                   servers={startServers}
                   onSend={(text: string, folder: StartFolder, server?: StartServer) => { void createProject('', '', undefined, undefined, undefined, folder, undefined, text, server?.id) }}
-                  onImportChat={startCanChooseFolder ? () => setPickingStartChat(true) : undefined} />
+                  onImportChat={startCanChooseFolder ? (folder?: string) => { if (folder) setPickingStartChat(folder) } : undefined} />
               </div>
             </div>
           ) : !selected ? (

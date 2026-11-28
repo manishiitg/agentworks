@@ -31,7 +31,8 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
   submitting?: boolean
   error?: string | null
   onSend: (text: string, folder: StartFolder, server?: StartServer) => void
-  onImportChat?: () => void
+  /** Mode new: called with the chosen folder, and offered only once one is chosen (#4496). */
+  onImportChat?: (folder?: string) => void
   onImportMcp?: () => void
   onDiscoverSkills?: () => void
 }) {
@@ -83,7 +84,7 @@ export function StartPage({ mode, place, projectId, projectFolder, canChooseFold
   const item = 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
   const sub = 'block text-xs text-muted-foreground'
   const imports = server ? [] : [
-    onImportChat && { key: 'chat', icon: MessageSquare, label: 'Import a chat', line: 'From Claude Code, Codex or Cursor on this Mac', run: onImportChat },
+    onImportChat && (mode === 'project' || folder) && { key: 'chat', icon: MessageSquare, label: 'Import a chat', line: mode === 'new' && folder ? `From ${folderName(folder)}, in Claude Code, Codex or Cursor` : 'From Claude Code, Codex or Cursor on this Mac', run: () => onImportChat(mode === 'new' ? folder : undefined) },
     onImportMcp && { key: 'mcp', icon: Plug, label: 'Import MCP servers', line: 'From your Claude, Codex, Cursor and agy settings', run: onImportMcp },
     onDiscoverSkills && { key: 'skills', icon: Sparkles, label: 'Discover & import skills', line: 'From your Claude and Codex folders', run: onDiscoverSkills },
   ].filter(Boolean) as { key: string; icon: typeof Plug; label: string; line: string; run: () => void }[]
