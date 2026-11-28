@@ -3,8 +3,10 @@ package codexcli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
+	"strings"
 	"testing"
 	"time"
 )
@@ -106,4 +108,28 @@ func TestCodexCapacityRetryContinuesEmptyInputAndCaps(t *testing.T) {
 		t.Fatalf("compact became task continuation: starts=%d notices=%d err=%v", compactWriter.starts, compactRetries, compactErr)
 	}
 
+}
+
+// #4602: Stop can land after turn/start but before Codex records the person's
+// message, so Codex never saw it; the next turn carries it once.
+func TestCodexStopBeforeThePromptIsRecordedCarriesItIntoTheNextTurn(t *testing.T) {
+	for _, recorded := range []bool{false, true} {
+		r := &codexRPC{events: make(chan codexRPCMessage, 4), done: make(chan struct{})}
+		if recorded {
+			r.events <- codexRPCMessage{Method: "item/started", Params: json.RawMessage(`{"threadId":"thread","turnId":"first","item":{"id":"u1","type":"userMessage","content":[{"type":"text","text":"task"}]}}`)}
+		}
+		r.events <- codexRPCMessage{Method: "turn/completed", Params: json.RawMessage(`{"threadId":"thread","turn":{"id":"first","status":"interrupted"}}`)}
+		s := &codexAppSession{threadID: "thread"}
+		_, err := (&CodexCLIAdapter{}).consumeAppTurnWithCapacityRetry(context.Background(), s, r, "owner", "thread", "first", "fix the login page", &llmtypes.CallOptions{}, func(llmtypes.StreamChunk) {})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("recorded=%v: stop must still read as a stop, got %v", recorded, err)
+		}
+		next := codexWithStoppedUnseen(s, "and the footer")
+		if carried := strings.Contains(next, "fix the login page"); carried == recorded {
+			t.Fatalf("recorded=%v: next turn %q", recorded, next)
+		}
+		if again := codexWithStoppedUnseen(s, "x"); again != "x" {
+			t.Fatalf("carried twice: %q", again)
+		}
+	}
 }

@@ -483,6 +483,11 @@ func (c *CodexCLIAdapter) consumeAppTurn(ctx context.Context, s *codexAppSession
 				case "completed":
 					return codexAppResponse(s, joined(), usage), nil
 				case "interrupted":
+					// Codex can take turn/start and be stopped before it records
+					// the person's message; that message never reached it.
+					if len(seenUserItems) == 0 {
+						return nil, errCodexStoppedUnseen
+					}
 					return nil, context.Canceled
 				default:
 					message := "Codex turn failed"

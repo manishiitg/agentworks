@@ -56,9 +56,12 @@ type codexAppSession struct {
 	// Steers the server accepted whose userMessage item has not been seen
 	// (receipt id -> text). Codex runs a steer its turn did not consume as its
 	// own next turn, which consumeAppTurn must then follow.
-	steers     map[string]string
-	rateLimits *codexRateLimits
-	idle       *time.Timer
+	steers map[string]string
+	// stoppedUnseen: a prompt whose turn was stopped before Codex recorded it,
+	// so Codex never saw it; the next turn carries it (#4602).
+	stoppedUnseen string
+	rateLimits    *codexRateLimits
+	idle          *time.Timer
 	// commands follows running commands and their live output (#3131).
 	commands *codexCommands
 }
@@ -637,6 +640,7 @@ func (c *CodexCLIAdapter) generateContentAppServer(ctx context.Context, messages
 		}
 	}
 	prompt = c.injectCodexHistory(ctx, r, owner, thread, startedNewThread, prompt)
+	prompt = codexWithStoppedUnseen(s, prompt)
 	params, closeImages, err := codexParamsWithImages(ctx, owner, codexAppTurnParams(thread, prompt, opts), messages)
 	if err != nil {
 		return nil, err
@@ -740,6 +744,17 @@ func (c *CodexCLIAdapter) consumeAppTurnWithCapacityRetry(ctx context.Context, s
 	defer func() { finishRetry(false) }()
 	for attempt := 0; ; attempt++ {
 		response, turnErr := c.consumeAppTurn(ctx, s, r, thread, turn, emit)
+		if errors.Is(turnErr, errCodexStoppedUnseen) {
+			if text := strings.TrimSpace(originalPrompt); text != "" && !strings.EqualFold(text, "/compact") {
+				s.mu.Lock()
+				s.stoppedUnseen = originalPrompt
+				s.mu.Unlock()
+				if c.logger != nil {
+					c.logger.Infof("[CODEX_STOP] owner=%s action=prompt_unseen chars=%d", owner, len(originalPrompt))
+				}
+			}
+			turnErr = context.Canceled
+		}
 		finishRetry(turnErr == nil)
 		var nativeErr *CodexTurnError
 		// /compact is a command, not unfinished task input. Never turn a failed
@@ -1194,4 +1209,21 @@ func codexAppErrorInfo(raw json.RawMessage) string {
 		}
 	}
 	return ""
+}
+
+// errCodexStoppedUnseen: the turn was stopped before Codex recorded its prompt.
+var errCodexStoppedUnseen = fmt.Errorf("codex turn stopped before its prompt was recorded: %w", context.Canceled)
+
+// codexWithStoppedUnseen puts a prompt Codex never saw (its turn was stopped
+// first) ahead of this turn's, once, so Codex knows the person sent it, as
+// Claude does from its own history.
+func codexWithStoppedUnseen(s *codexAppSession, prompt string) string {
+	s.mu.Lock()
+	stopped := s.stoppedUnseen
+	s.stoppedUnseen = ""
+	s.mu.Unlock()
+	if strings.TrimSpace(stopped) == "" {
+		return prompt
+	}
+	return "[Earlier message, stopped before you saw it]\nThe person sent this and stopped the reply before it reached you. It is here so you know it was sent; answer the current message.\n\n" + stopped + "\n\n[Current message]\n" + prompt
 }
