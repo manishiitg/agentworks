@@ -25,7 +25,9 @@ func (r crewWorkRefusal) Error() string { return r.text }
 type crewWorkNeed struct {
 	ID   string `json:"id"`
 	Line string `json:"line"`
-	Link string `json:"link,omitempty"`
+	// The request's own words, shown under its title so the person knows what they are answering.
+	Message string `json:"message,omitempty"`
+	Link    string `json:"link,omitempty"`
 	// A request's web links and attached files (a PR, a plan .md), opened like a task's (#2965).
 	Links     []string           `json:"links,omitempty"`
 	Files     []crewTeamTaskFile `json:"files,omitempty"`
@@ -37,7 +39,7 @@ type crewWorkNeed struct {
 	Agent     string             `json:"agent"`
 	Person    string             `json:"person"`
 	Mine      bool               `json:"mine,omitempty"` // the asking agent is the viewer's own
-	State     string             `json:"state"` // waiting
+	State     string             `json:"state"`          // waiting
 	At        time.Time          `json:"at"`
 }
 
@@ -54,7 +56,7 @@ func crewWorkNeedsFromRequests(requests []agentTeamRequest, viewer string) []*cr
 		if !r.ForMe {
 			continue
 		}
-		waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, Mine: r.personID != "" && r.personID == viewer, State: "waiting", At: r.At, Links: r.links, Files: r.files})
+		waiting = append(waiting, &crewWorkNeed{ID: r.MessageID, Line: r.Title, Message: needMessage(r.Title, r.Text), Link: r.Ref, For: r.For, ForMe: r.ForMe, Buttons: r.Buttons, Agent: r.Agent, Person: r.Person, Mine: r.personID != "" && r.personID == viewer, State: "waiting", At: r.At, Links: r.links, Files: r.files})
 	}
 	slices.SortFunc(waiting, func(a, b *crewWorkNeed) int { return b.At.Compare(a.At) })
 	return waiting
@@ -139,4 +141,13 @@ func crewWorkAnswerHelper(ctx context.Context, team crewTeam, person string, in 
 		choose = append(choose, map[string]any{"id": row.ID, "name": row.Name, "online": row.Online})
 	}
 	return nil, map[string]any{"choose_agent": choose, "note": "Choose which of your agents handles this request."}, nil
+}
+
+// needMessage is a request's text for its card, without the title it starts with (a title defaults to the first line).
+func needMessage(title, text string) string {
+	text, title = strings.TrimSpace(text), strings.TrimSpace(title)
+	if title != "" {
+		text = strings.TrimSpace(strings.TrimPrefix(text, title))
+	}
+	return text
 }
