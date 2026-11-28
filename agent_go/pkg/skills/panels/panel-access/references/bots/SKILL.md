@@ -47,5 +47,5 @@ procedure), then tick it with `set`.
 - `add` / `remove` (`crew_id`, `bot`): put a bot into a project you build so its agents can ask it; it shows in that
   project's agent list and right menu. `list` with `crew_id` returns the bots added to it.
 
-An agent cannot make another project's agent into a bot or ask it to publish itself: the maker does that from inside
-that project. Say so, and offer to set up the bots in this project instead.
+To make an agent in another project a bot, pass that project's `crew_id` (from `workspace action=list`) with `get`
+and `set`; it works only when the person you act for made that agent. Otherwise only its maker can, so say who.
