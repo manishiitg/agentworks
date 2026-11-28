@@ -3,9 +3,24 @@ import type { PollingEvent } from '../services/api-types'
 // Summary and next steps (owner, 26 Nov, like Claude Desktop's card), for every coding app. The agent ends a reply
 // with a ```next block of one JSON line (chat_reply_style.go, chatNextStepsNote; keep the format in step):
 // {"summary": "...", "question": "...", "options": ["...", "..."]}. The reply's text never shows the block; the
-// message box shows it as a card with one-click answers.
+// message box shows it as a card with one-click answers. An answer may instead start a goal or a plan (owner, 28 Nov):
+// {"goal": "when the work is done", "label": "..."} or {"plan": "what to plan", "label": "..."}; label is what is sent
+// where the app has no goal or plan mode.
 
-export type NextSteps = { summary: string; question: string; options: string[] }
+export type NextOption = { text: string; goal?: string; plan?: string }
+export type NextSteps = { summary: string; question: string; options: NextOption[] }
+
+const str = (value: unknown) => typeof value === 'string' ? value.trim() : ''
+
+function nextOption(item: unknown): NextOption | undefined {
+  if (typeof item === 'string') return item.trim() ? { text: item.trim() } : undefined
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return
+  const value = item as Record<string, unknown>
+  const goal = str(value.goal), plan = str(value.plan), label = str(value.label)
+  if (goal) return { text: label || goal, goal }
+  if (plan) return { text: label || plan, plan }
+  return label ? { text: label } : undefined
+}
 
 // A finished block anywhere at the end of the text, and a block still being written (no closing fence yet).
 const NEXT_BLOCK = /\n?```next[ \t]*\n([\s\S]*?)\n?```[ \t]*$/
@@ -24,7 +39,7 @@ export function parseNextSteps(text: string): NextSteps | undefined {
   if (!match) return
   try {
     const value = JSON.parse(match[1].trim()) as Record<string, unknown>
-    const options = Array.isArray(value.options) ? value.options.filter((item): item is string => typeof item === 'string' && item.trim() !== '').map(item => item.trim()).slice(0, 3) : []
+    const options = Array.isArray(value.options) ? value.options.map(nextOption).filter((item): item is NextOption => Boolean(item)).slice(0, 3) : []
     const question = typeof value.question === 'string' ? value.question.trim() : ''
     const summary = typeof value.summary === 'string' ? value.summary.trim() : ''
     if (!question || !options.length) return

@@ -4,7 +4,8 @@ import { LoadingIndicator } from './ui/LoadingIndicator'
 import { contextAttachmentRemoval } from '../utils/chatContextAttachment'
 import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
-import { NextStepsCard, NextStepsSlot, useNextSteps } from './chat/NextStepsCard'
+import { NextStepsCard, NextStepsSlot, nextOptionMode, useNextSteps } from './chat/NextStepsCard'
+import type { NextOption } from '../utils/nextSteps'
 import { BtwPanel } from './chat/BtwPanel'
 import { TerminalCommandPopup } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
@@ -2129,7 +2130,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // Cursor sessions each own their native live-vs-next-turn behavior.
   //
   // STRUCTURED / NON-INTERACTIVE — keep the ordinary steer-or-queue behavior.
-  const routeSubmit = useCallback(async (query: string, deliveryOverride?: ChatSubmissionOptions['deliveryMode']) => {
+  const routeSubmit = useCallback(async (query: string, deliveryOverride?: ChatSubmissionOptions['deliveryMode'], pick?: 'goal' | 'plan') => {
     if (!isChatIdentityCurrent(composerIdentityRef.current)) return
     if (!hasChatSubmissionContent(query, chatFileContext, pendingComposerAttachments, requestedSkillId)) return
     if (pendingNativeChoice) {
@@ -2153,8 +2154,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       return
     }
     if (composerTriggerRef.current?.kind === '#') closeComposerPickers()
+    // A next-steps answer can start a plan or a goal for this one message (pick), as if picked in the Mode menu.
+    const sendPlan = planOn || pick === 'plan'
+    const sendGoal = !sendPlan && (goalOn || pick === 'goal')
+    if (pick === 'plan' && !planOn && activeTabId) setTabConfig(activeTabId, { planMode: true, planAwaitingStart: false, goalMode: false })
     // Goal mode: this message is the goal, sent as the coding app's own /goal (a typed slash command goes as typed).
-    if (goalOn && query.trim() && !query.trim().startsWith('/')) query = `/goal ${query.trim()}`
+    if (sendGoal && query.trim() && !query.trim().startsWith('/')) query = `/goal ${query.trim()}`
 
     // Once a chat has a session, every send goes to the server: its durable
     // conversation-turn dispatcher (PLAT-178) decides whether to deliver into
@@ -2197,7 +2202,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             fileContextConsumed: true,
             deliveryMode: deliveryOverride ?? 'steer',
             submissionId,
-            ...(planOn ? { planMode: true } : {}),
+            ...(sendPlan ? { planMode: true } : {}),
             onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
           })
         } catch (error) {
@@ -2219,8 +2224,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
           return
         }
         // A Codex/Cursor plan reply then offers "Start the work" (Claude asks with its own card).
-        if (planOn && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
-        if (goalOn && submittedTabId) setTabConfig(submittedTabId, { goalMode: false })
+        if (sendPlan && submittedTabId) setTabConfig(submittedTabId, { planAwaitingStart: true })
+        if (sendGoal && submittedTabId) setTabConfig(submittedTabId, { goalMode: false })
         return
       }
       const reason = getSubmitBlockReason()
@@ -2237,7 +2242,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       let restoreRefusedDraft = true
       try {
         accepted = await onSubmit(query, { sourceTabId: submittedTabId, requestedSkillId, fileContext: submittedDraft.fileContext, fileContextConsumed: true, deliveryMode: deliveryOverride ?? 'steer', submissionId,
-          ...(planOn ? { planMode: true } : {}),
+          ...(sendPlan ? { planMode: true } : {}),
           onRejected: failure => { restoreRefusedDraft = !isAccessRefusal(failure) },
         })
       } catch (error) {
@@ -2248,7 +2253,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         latestInputTextRef.current = submittedDraft.inputText
         setLocalInputText(submittedDraft.inputText)
         addToast('Message was not accepted. Your draft was kept.', 'warning')
-      } else if (accepted !== false && submittedTabId && (planOn || goalOn)) setTabConfig(submittedTabId, { ...(planOn ? { planAwaitingStart: true } : {}), ...(goalOn ? { goalMode: false } : {}) })
+      } else if (accepted !== false && submittedTabId && (sendPlan || sendGoal)) setTabConfig(submittedTabId, { ...(sendPlan ? { planAwaitingStart: true } : {}), ...(sendGoal ? { goalMode: false } : {}) })
     } else {
       const reason = getSubmitBlockReason()
       if (reason) addToast(reason, 'info')
@@ -2266,6 +2271,13 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   // The summary and next-steps card replaces the grey suggestion while it shows, as in Claude Desktop.
   // Like Claude Desktop: the card stays while the person types and goes when they send; typing only drops its Cmd+Enter shortcut.
   const nextSteps = useNextSteps(tabSessionId, !isTurnInFlight && !isViewOnly)
+  // A card answer may be a goal or a plan (owner, 28 Nov); where this chat's app has neither, its plain text is sent.
+  const nextModes = useMemo(() => ({ goal: nativeGoalSupported && !isViewOnly, plan: nativePlanSupported }), [nativeGoalSupported, isViewOnly, nativePlanSupported])
+  const pickNextOption = useCallback((option: NextOption) => {
+    nextSteps.dismiss()
+    const mode = nextOptionMode(option, nextModes)
+    void routeSubmit(mode === 'goal' ? option.goal! : mode === 'plan' ? option.plan! : option.text, undefined, mode)
+  }, [nextSteps, nextModes, routeSubmit])
   const nextPrompt = useNextPrompt(tabSessionId, composerIdle && !nextSteps.steps)
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -2296,9 +2308,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (nextSteps.steps && !latestInputTextRef.current && e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
       e.preventDefault()
       e.stopPropagation()
-      const first = nextSteps.steps.options[0]
-      nextSteps.dismiss()
-      void routeSubmit(first)
+      pickNextOption(nextSteps.steps.options[0])
       return
     }
 
@@ -2380,7 +2390,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         textarea.selectionStart = textarea.selectionEnd = start + 1
       }, 0)
     }
-  }, [nextPrompt, nextSteps, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId, nativePlanSupported, togglePlanMode])
+  }, [nextPrompt, nextSteps, showFileDialog, showCommandDialog, showCrewReferences, showSkillPopup, showServerPopup, isStreaming, isTurnInFlight, onStopStreaming, queryToSubmit, executeSlashCommandFromQuery, tabSessionId, routeSubmit, supportsLiveCodingAgentInput, sendLiveCodingAgentControlKey, inputText, writeComposerText, closeComposerPickers, chatFileContext, uploadingFiles, activeTabId, requestedSkillId, nativePlanSupported, togglePlanMode, pickNextOption])
 
   // A message the app sends for the person in this chat (the terminal's starter message), through the same send path.
   useEffect(() => {
@@ -3125,7 +3135,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
       <ChatComposerArea product={isProductSurface} className={inputPadX}>
         <ChatComposerForm product={isProductSurface} onSubmit={handleSubmit} aboveCard={<>
           {activeTabId && <BtwPanel tabId={activeTabId} onAddToChat={text => { void routeSubmit(text, 'queue') }} />}
-          {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} shortcut={composerIdle} onDismiss={nextSteps.dismiss} onPick={text => { nextSteps.dismiss(); void routeSubmit(text) }} onTurnOff={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: false }) } : undefined} onTurnOn={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: true }) } : undefined} /></NextStepsSlot>}
+          {nextSteps.steps && activeTabId && <NextStepsSlot tabId={activeTabId}><NextStepsCard steps={nextSteps.steps} shortcut={composerIdle} onDismiss={nextSteps.dismiss} modes={nextModes} onPick={pickNextOption} onTurnOff={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: false }) } : undefined} onTurnOn={tabSessionId ? () => { void changeChatContext(tabSessionId, { next_steps: true }) } : undefined} /></NextStepsSlot>}
           <div ref={setMicBannerHost} className="empty:hidden" />
           {requestedSkillId && <div className="mx-3 my-1 flex items-center gap-2 text-xs">
             <span className="truncate rounded border border-border bg-muted px-2 py-1" title={requestedSkill ? `${requestedSkill.description} · ${requestedSkill.source}` : nativeSkillCatalog.error || nativeSkillCatalog.catalog.message}>Skill requested: {requestedSkill?.name || (nativeSkillCatalog.loading ? 'Loading…' : 'unavailable — refresh Skills')}</span>
