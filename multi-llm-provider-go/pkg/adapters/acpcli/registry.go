@@ -131,6 +131,12 @@ type FinishedCheck interface {
 	BeginFinished(sessionID string) func() bool
 }
 
+// ExecutedModelReader is an optional part of an Outcome: the model the agent's own record says answered the
+// session's latest turn ("" when it does not say). The turn's cost is priced at that model.
+type ExecutedModelReader interface {
+	ExecutedModel(sessionID string) string
+}
+
 var launchHooks = struct {
 	sync.Mutex
 	m map[string]func(LaunchRequest) (*LaunchSpec, error)
