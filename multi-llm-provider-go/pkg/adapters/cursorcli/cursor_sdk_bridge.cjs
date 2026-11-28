@@ -2,11 +2,21 @@
 // One bridge per chat: it keeps the SDK agent between turns. Lines in: start, prompt (with an optional
 // model: a model change needs no new bridge), steer, cancel, summarize, stop_shell. Lines out: ready, model, delta,
 // tool, usage, context, compaction, steer_accepted, result, summarize_result, fatal, shell_output, shell_stopped,
-// helper_progress. The SDK logs to stdout
+// helper_progress, reconnect, mcp_blocked. The SDK logs to stdout
 // too, so every protocol line carries a marker and Go ignores the rest.
 const { createInterface } = require('node:readline');
 const emit = value => process.stdout.write('\u0001aw ' + JSON.stringify(value) + '\n');
 const short = error => String(error?.message || error || 'Error').split('\n')[0].slice(0, 300);
+// Slow IPv6/NAT64 networks: Node gives each address 250 ms to connect, so every Cursor request can time out
+// before it starts (T3 Code #43845). Allow 1 s per address; a larger value set by the person is kept.
+try {
+  const net = require('node:net');
+  if (!(net.getDefaultAutoSelectFamilyAttemptTimeout?.() >= 1000)) net.setDefaultAutoSelectFamilyAttemptTimeout?.(1000);
+} catch { /* An older Node keeps its default. */ }
+// What a steer's answer means here. Local runs answer "complete_delivered" or "revert_to_followup"; SDK 1.5
+// cloud runs may answer { outcome: "queued" }: Cursor itself will answer that message next, so it is not sent again.
+const steerOutcome = value => typeof value === 'string' ? value.slice(0, 40) : value?.outcome === 'queued' ? 'queued' : 'unknown';
+const steerOwned = outcome => outcome === 'complete_delivered' || outcome === 'queued';
 
 // Queued inputs are text and opaque Go capabilities only. A fetch is scoped to
 // one native intake, bounded, and forgotten before a kept session goes idle.
@@ -332,15 +342,53 @@ async function main() {
     local: { cwd: start.cwd, ...(store ? { store } : {}), ...(start.dirs ? { dirs: start.dirs } : {}), settingSources: ['project', 'user'],
       // Task subagents get this agent's tool allowlist; without it a child gets Cursor's full toolset.
       subagentInherit: {},
-      // Retry transport errors and stalls inside the SDK (1.3 reads this; pinned so a default change cannot drop it).
+      // Retry transport errors and stalls inside the SDK (pinned so a default change cannot drop it).
       enableAgentRetries: true,
       // Auto-review (the chat's access mode): Cursor's classifier runs safe tool calls; a local SDK run cannot ask
       // the person, so it refuses the rest and the agent says why.
-      ...(start.auto_review ? { autoReview: true } : {}) },
+      ...(start.auto_review ? { autoReview: true } : {}),
+      // SDK 1.5: a local run's transport retry. Go shows it like Claude's and Codex's own retries.
+      onConnectionStateChange: state => {
+        if (state?.state !== 'reconnecting' && state?.state !== 'connected') return;
+        emit({ type: 'reconnect', status: state.state, attempt: Number.isSafeInteger(state.attempt) && state.attempt > 0 ? state.attempt : undefined });
+      } },
     ...(start.mode ? { mode: start.mode } : {}),
     ...(start.tools ? { tools: start.tools } : {}),
-    ...(start.mcp_servers ? { mcpServers: start.mcp_servers } : {}),
+    ...(start.mcp_servers ? { mcpServers: Object.fromEntries(Object.entries(start.mcp_servers).filter(([name]) => !blockedMcp.has(name))) } : {}),
   });
+  // Team MCP policy (SDK 1.5): Cursor refuses a whole run when the team blocks any MCP server it is given
+  // (T3 Code #43602). The servers it names are left out for the rest of this bridge and the agent is opened
+  // again without them, so the chat keeps working with the tools that are allowed.
+  const blockedMcp = new Set();
+  const mcpBlocked = error => {
+    let found;
+    for (let e = error, depth = 0; e && depth < 5 && !found; e = e.cause, depth++) {
+      if (e.name === 'InlineMcpServersBlockedError' || /rejected by team MCP policy/i.test(String(e.message || e))) found = e;
+    }
+    if (!found || !start?.mcp_servers) return [];
+    const listed = Array.isArray(found.servers) ? found.servers.map(server => server?.name)
+      : [...String(found.message || found).matchAll(/(?:: |; )([^\s();:]+) \(/g)].map(match => match[1]);
+    return [...new Set(listed)].filter(name => typeof name === 'string' && Object.hasOwn(start.mcp_servers, name) && !blockedMcp.has(name));
+  };
+  const skipBlockedMcp = names => {
+    for (const name of names) blockedMcp.add(name);
+    emit({ type: 'mcp_blocked', servers: names.slice(0, 20).map(name => name.slice(0, 80)) });
+  };
+  // Opens the agent; a policy refusal opens it once more without the servers it names.
+  const openAgent = async open => {
+    try { return await open(); } catch (error) {
+      const names = mcpBlocked(error);
+      if (!names.length) throw error;
+      skipBlockedMcp(names);
+      return await open();
+    }
+  };
+  const reopenWithoutBlocked = async names => {
+    skipBlockedMcp(names);
+    const id = agent.agentId;
+    try { await agent[Symbol.asyncDispose]?.(); } catch { /* The old handle is dropped either way. */ }
+    agent = await openAgent(() => Agent.resume(id, options()));
+  };
   // Steers handed to a running run. The SDK settles a steer only when the server answers, and one it
   // had queued is settled "revert_to_followup" only as its run ends, often after run.wait() returned.
   // So a turn waits for every steer's outcome before it ends, and answers each one the run did not
@@ -350,7 +398,7 @@ async function main() {
     if (entry.settled) return;
     entry.settled = true;
     emit({ type: 'steer_outcome', id: entry.id, status: outcome });
-    if (outcome !== 'complete_delivered') followups.push({text:entry.text,image_id:entry.image_id});
+    if (!steerOwned(outcome)) followups.push({text:entry.text,image_id:entry.image_id});
   };
   const drop = () => { for (const entry of steers) entry.settled = true; steers = []; followups = []; steerIntakes = Promise.resolve(); };
   // Steering and cancel arrive while a run streams, so they are handled as they are read.
@@ -382,7 +430,7 @@ async function main() {
         return {outcome};
       });
       steerIntakes = submitted.then(() => {}, () => {});
-      entry.done = submitted.then(value => value.outcome)
+      entry.done = submitted.then(value => value.outcome).then(steerOutcome)
         .then(outcome => settle(entry, outcome), () => settle(entry, 'error'));
       return true;
     }
@@ -418,7 +466,7 @@ async function main() {
       requestedModel = JSON.stringify(start.model);
       start.model = await resolveModel(start.model, start.catalog_wait_ms);
       if (start.agent_id) {
-        try { agent = await Agent.resume(start.agent_id, options()); }
+        try { agent = await openAgent(() => Agent.resume(start.agent_id, options())); }
         catch (error) {
           // A saved agent this store does not have: start fresh and let Go send the history.
           if (start.require_native_resume || !/not.?found|unknown agent|does not exist/i.test(short(error))) throw error;
@@ -436,7 +484,7 @@ async function main() {
       const resumed = Boolean(agent);
       if (start.require_native_resume && !resumed) throw new Error('The transferred native Cursor agent could not be resumed. Its saved history was kept.');
       if (start.require_native_resume && agent.agentId !== start.agent_id) throw new Error('Cursor returned a different native agent. The transferred chat was kept.');
-      if (!agent) agent = await Agent.create(options());
+      if (!agent) agent = await openAgent(() => Agent.create(options()));
       emit({ type: 'ready', agent_id: agent.agentId, resumed, ...(stale ? { stale, stale_agent: start.agent_id } : {}), model_catalog: catalog, ...(lookupMs !== undefined ? { model_lookup_ms: lookupMs } : {}), model_params: paramsText(start.model), sdk_version: sdkVersion });
       continue;
     }
@@ -489,7 +537,7 @@ async function main() {
         // cancelled and the turn finishes. A run that ends with the SDK's own "no progress" error after
         // the turn ended has finished too.
         const observation = { afterEnd: false, phase: 'foreground', run: undefined };
-        let turnEnded = false, quietEnded = false, faulted = false, quiet, giveUp, fail;
+        let turnEnded = false, quietEnded = false, faulted = false, streamed = false, quiet, giveUp, fail;
         const sdkFailed = new Promise(resolve => { fail = resolve; });
         failRun = reason => {
           failRun = undefined;
@@ -535,6 +583,7 @@ async function main() {
           ...(turnMode ? { mode: turnMode } : {}),
           onDelta: ({ update }) => {
             if (update.type === 'turn-ended') observation.afterEnd = true;
+            if (update.type === 'text-delta' || update.type === 'tool-call-started') streamed = true;
             observe(observation, 'delta', update);
             if (update.type === 'tool-call-delta') helperProgress(update.callId, update.taskUpdate);
             if (update.type === 'tool-call-started' && update.toolCall?.type === 'task') emit({ type: 'helper_progress', call_id: update.callId, agent_id: metaID(agent.agentId), kind: 'started', args: { description: update.toolCall.args?.description, prompt: update.toolCall.args?.prompt } });
@@ -584,10 +633,16 @@ async function main() {
           // Same stale run as at start, if it appeared after: cancel it and retry once. A run the store still marks
           // active that cannot be found or cancelled (its process crashed) is expired by the SDK's own recovery,
           // send({ local: { force: true } }), instead of failing every later message of the chat.
-          if (!/already has active run/i.test(short(error)) && error?.name !== 'AgentBusyError') throw error;
-          const cancelled = await cancelStale(agent.agentId).catch(() => false);
-          emit({ type: 'stale', agent_id: agent.agentId, action: cancelled ? 'cancelled' : 'forced' });
-          run = await agent.send(await imageFrames.message(text), cancelled ? sendOptions : { ...sendOptions, local: { force: true } });
+          const blocked = mcpBlocked(error);
+          if (blocked.length) {
+            await reopenWithoutBlocked(blocked);
+            run = await agent.send(await imageFrames.message(text), sendOptions);
+          } else {
+            if (!/already has active run/i.test(short(error)) && error?.name !== 'AgentBusyError') throw error;
+            const cancelled = await cancelStale(agent.agentId).catch(() => false);
+            emit({ type: 'stale', agent_id: agent.agentId, action: cancelled ? 'cancelled' : 'forced' });
+            run = await agent.send(await imageFrames.message(text), cancelled ? sendOptions : { ...sendOptions, local: { force: true } });
+          }
           if (turnMode) sentMode = turnMode;
         }
         const current = run;
@@ -621,13 +676,20 @@ async function main() {
         if (faulted) current.cancel().catch(() => {});
         observation.phase = 'after_result';
         stopQuiet();
-        // An SDK fault after Cursor ended its turn leaves the same finished answer.
-        if (turnEnded && !hasWork() && last.status !== 'finished' && (quietEnded || faulted || /repeated resume attempts made no progress/i.test(short(last.error)))) {
+        // An SDK fault after Cursor ended its turn leaves the same finished answer, and so do the SDK's retries
+        // giving up after it: "no progress" from an older checkpoint, or "Connection failed repeatedly" (T3 Code #41176).
+        const retriesGaveUp = /repeated resume attempts made no progress/i.test(short(last.error)) ? 'no_progress'
+          : /^Connection failed repeatedly/i.test(short(last.error)) ? 'connection_failed' : undefined;
+        if (turnEnded && !hasWork() && last.status !== 'finished' && (quietEnded || faulted || retriesGaveUp)) {
           if (faulted && !quietEnded) emit({ type: 'turn_end_settled', action: 'sdk_rejection', status: last.status });
-          else if (!quietEnded) emit({ type: 'turn_end_settled', action: 'no_progress', status: last.status });
+          else if (!quietEnded) emit({ type: 'turn_end_settled', action: retriesGaveUp, status: last.status });
           last = { ...last, status: 'finished', error: undefined };
         }
         run = undefined;
+        // A run the team's MCP policy refused before it did anything: open the agent without those servers and
+        // send the same message once more.
+        const refusedMcp = last.status === 'error' && !streamed ? mcpBlocked(last.error) : [];
+        if (refusedMcp.length) { await reopenWithoutBlocked(refusedMcp); continue; }
         if (last.status !== 'finished') break;
         let timer;
         await Promise.race([Promise.all(steers.map(entry => entry.done)), new Promise(resolve => { timer = setTimeout(resolve, 15000); })]);

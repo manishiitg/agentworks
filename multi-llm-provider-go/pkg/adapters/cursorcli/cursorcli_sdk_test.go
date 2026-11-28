@@ -468,13 +468,14 @@ func TestCursorSDKTurnEndedRunThatStaysOpenFinishesWithTheAnswer(t *testing.T) {
 		updates, ending, status string
 		settle                  bool
 	}{
-		"run stays open":                               {ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled', result:''}); })`, status: "finished", settle: true},
-		"no progress error":                            {ending: `({status:'error', error:{message:'Agent turn stopped after repeated resume attempts made no progress'}})`, status: "finished", settle: true},
-		"live shell survives quiet window":             {updates: `opts.onDelta({update:{type:'tool-call-started',callId:'shell',toolCall:{type:'shell'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>r({status:'finished',result:'background finished'}),500); })`, status: "finished"},
-		"detached task survives quiet window":          {updates: `opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:true}}}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>r({status:'finished',result:'background finished'}),500); })`, status: "finished"},
-		"finished foreground task becomes quiet again": {updates: `opts.onDelta({update:{type:'tool-call-started',callId:'task',toolCall:{type:'task'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:false}}}}}),300); })`, status: "finished", settle: true},
-		"non-shell delta completes and becomes quiet":  {updates: `opts.onDelta({update:{type:'tool-call-delta',callId:'read',taskUpdate:{type:'text-delta',text:'working'}}}); opts.onDelta({update:{type:'tool-call-completed',callId:'read',toolCall:{type:'read'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); })`, status: "finished", settle: true},
-		"native task failure is not hidden":            {updates: `opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:true}}}}});`, ending: `({status:'error',error:{message:'Agent turn stopped after repeated resume attempts made no progress'}})`, status: "error"},
+		"run stays open":    {ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled', result:''}); })`, status: "finished", settle: true},
+		"no progress error": {ending: `({status:'error', error:{message:'Agent turn stopped after repeated resume attempts made no progress'}})`, status: "finished", settle: true},
+		"connection retries exhausted after the answer": {ending: `({status:'error', error:{message:'Connection failed repeatedly'}})`, status: "finished", settle: true},
+		"live shell survives quiet window":              {updates: `opts.onDelta({update:{type:'tool-call-started',callId:'shell',toolCall:{type:'shell'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>r({status:'finished',result:'background finished'}),500); })`, status: "finished"},
+		"detached task survives quiet window":           {updates: `opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:true}}}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>r({status:'finished',result:'background finished'}),500); })`, status: "finished"},
+		"finished foreground task becomes quiet again":  {updates: `opts.onDelta({update:{type:'tool-call-started',callId:'task',toolCall:{type:'task'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); setTimeout(()=>opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:false}}}}}),300); })`, status: "finished", settle: true},
+		"non-shell delta completes and becomes quiet":   {updates: `opts.onDelta({update:{type:'tool-call-delta',callId:'read',taskUpdate:{type:'text-delta',text:'working'}}}); opts.onDelta({update:{type:'tool-call-completed',callId:'read',toolCall:{type:'read'}}});`, ending: `await new Promise(r => { cancelRun = () => r({status:'cancelled'}); })`, status: "finished", settle: true},
+		"native task failure is not hidden":             {updates: `opts.onDelta({update:{type:'tool-call-completed',callId:'task',toolCall:{type:'task',result:{status:'success',value:{isBackground:true}}}}});`, ending: `({status:'error',error:{message:'Agent turn stopped after repeated resume attempts made no progress'}})`, status: "error"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -722,5 +723,87 @@ exports.Agent={create:async()=>({agentId:'agent-'+process.pid,
 	}
 	if fmt.Sprint(phases) != "[start end]" {
 		t.Fatalf("compaction events = %v", phases)
+	}
+}
+
+// SDK 1.5 (T3 Code #43602, #41176): a team MCP policy that blocks a server Cursor is given refuses the whole
+// run; the bridge opens the agent again without the servers it names and sends the same message once. A
+// cloud-style { outcome: "queued" } steer answer is Cursor's own follow-up, never sent again, and the SDK's
+// reconnect signal reaches Go.
+func TestCursorSDK15PolicyBlockedMCPQueuedSteerAndReconnect(t *testing.T) {
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("node not installed")
+	}
+	blockedErr := `Object.assign(new Error('Inline mcpServers were rejected by team MCP policy and were not started: blocked (denied): not allowed'), {name:'InlineMcpServersBlockedError', servers:[{name:'blocked',reason:'denied',message:'not allowed'}]})`
+	for name, tc := range map[string]struct {
+		create, send, wait, want, steer string
+		sends                           int
+	}{
+		"blocked at send":     {send: `if(opts0.mcpServers.blocked) throw ` + blockedErr + `;`, want: `"type":"mcp_blocked","servers":["blocked"]`, sends: 2},
+		"blocked in the run":  {wait: `if(opts0.mcpServers.blocked) return {status:'error',error:{message:'Inline mcpServers were rejected by team MCP policy and were not started: blocked (denied): not allowed'}};`, want: `"type":"mcp_blocked","servers":["blocked"]`, sends: 2},
+		"blocked at create":   {create: `if(o.mcpServers.blocked) throw ` + blockedErr + `;`, want: `"type":"mcp_blocked","servers":["blocked"]`, sends: 1},
+		"other error is kept": {send: `throw new Error('Model unavailable');`, want: `"type":"result","status":"error","error":"Model unavailable"`, sends: 1},
+		"queued steer":        {steer: "QUEUED", want: `"type":"steer_outcome","id":"s1","status":"queued"`, sends: 1},
+		"reconnect":           {send: `opts0.local.onConnectionStateChange({state:'reconnecting',attempt:2}); opts0.local.onConnectionStateChange({state:'connected'});`, want: `"type":"reconnect","status":"reconnecting","attempt":2`, sends: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			bridge, entry := filepath.Join(dir, "bridge.cjs"), filepath.Join(dir, "sdk.cjs")
+			sdk := `
+let opts0, sends = 0, steerable;
+const agent = id => ({ agentId: id, async [Symbol.asyncDispose]() {}, send: async (text, opts) => {
+  sends++; ` + tc.send + `
+  let release; const held = new Promise(r => { release = r; });
+  steerable = release;
+  return {
+    steer: async t => { release(); return t === 'QUEUED' ? { outcome: 'queued', run: { id: 'r2' } } : 'complete_delivered'; },
+    async *stream() { if (!opts0.mcpServers?.blocked) opts.onDelta({update:{type:'text-delta',text:'answer'}}); if (` + "`" + tc.steer + "`" + `) await Promise.race([held, new Promise(r => setTimeout(r, 3000))]); },
+    wait: async () => { ` + tc.wait + ` return {status:'finished', result:'sends='+sends}; },
+    cancel: async () => {},
+  };
+}});
+exports.Cursor = { auth: { status: async () => ({status:'logged-in'}) }, models: { list: async () => [] } };
+exports.Agent = {
+  create: async o => { opts0 = o; ` + tc.create + ` return agent('a1'); },
+  resume: async (id, o) => { opts0 = o; return agent(id); },
+  listRuns: async () => ({ items: [] }),
+};
+process.on('exit', () => process.stderr.write('SENDS=' + sends + '\n'));`
+			for name, data := range map[string][]byte{bridge: cursorSDKBridge, entry: []byte(sdk)} {
+				if err := os.WriteFile(name, data, 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, "node", bridge, entry)
+			stdin, _ := cmd.StdinPipe()
+			var out strings.Builder
+			cmd.Stdout, cmd.Stderr = &out, &out
+			if err := cmd.Start(); err != nil {
+				t.Fatal(err)
+			}
+			_, _ = io.WriteString(stdin, `{"type":"start","model":{"id":"composer","params":[{"id":"fast","value":"false"}]},"mcp_servers":{"agentworks":{"url":"https://example.com/mcp"},"blocked":{"url":"https://example.com/other"}}}`+"\n"+`{"type":"prompt","text":"hi"}`+"\n")
+			if tc.steer != "" {
+				time.Sleep(300 * time.Millisecond)
+				_, _ = io.WriteString(stdin, `{"type":"steer","id":"s1","text":"`+tc.steer+`"}`+"\n")
+			}
+			deadline := time.Now().Add(8 * time.Second)
+			for !strings.Contains(out.String(), `"type":"result"`) && time.Now().Before(deadline) {
+				time.Sleep(20 * time.Millisecond)
+			}
+			_ = stdin.Close()
+			_ = cmd.Wait()
+			got := out.String()
+			if !strings.Contains(got, tc.want) || !strings.Contains(got, fmt.Sprintf("SENDS=%d", tc.sends)) {
+				t.Fatalf("want %s and %d sends: %s", tc.want, tc.sends, got)
+			}
+			if tc.want != `"type":"result","status":"error","error":"Model unavailable"` && !strings.Contains(got, `"type":"result","status":"finished"`) {
+				t.Fatalf("the turn did not finish: %s", got)
+			}
+			if strings.Contains(tc.want, "mcp_blocked") && strings.Contains(got, `"type":"result","status":"finished","result":"sends=1"`) && tc.sends == 2 {
+				t.Fatalf("the refused run was not retried: %s", got)
+			}
+		})
 	}
 }

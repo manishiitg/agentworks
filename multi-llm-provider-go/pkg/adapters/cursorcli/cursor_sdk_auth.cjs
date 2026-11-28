@@ -1,4 +1,6 @@
 // Fixed account actions. Never print SDK login results: they contain the credential.
+// Slow IPv6/NAT64 networks: 1 s per address instead of Node's 250 ms (as in the chat bridge).
+try { const net = require('node:net'); if (!(net.getDefaultAutoSelectFamilyAttemptTimeout?.() >= 1000)) net.setDefaultAutoSelectFamilyAttemptTimeout?.(1000); } catch { /* Older Node. */ }
 const { Cursor } = require(process.argv[1]);
 const action = process.argv[2];
 (async () => {
