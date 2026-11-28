@@ -12,9 +12,10 @@ import (
 )
 
 // A synced chat is kept only while the server would still accept a sync for it (owner, 24 Nov: "yes build it"):
-// the agent is still on the Team (an app agent: shared there, Team on) and its person is still a member. Removing or
-// deleting the agent, taking it out of the Team, its person leaving, or switching the Team off deletes the copy; a
-// joined Claude Code or Codex session keeps syncing with the Team off, so it keeps its copy.
+// the agent is still on the Team (an app agent: shared there, Team on) with a Live chat and its person is still a
+// member. Removing or deleting the agent, taking it out of the Team, hiding its chat (owner, 28 Nov), its person
+// leaving, or switching the Team off deletes the copy; a joined Claude Code or Codex session keeps syncing with the
+// Team off, so it keeps its copy.
 // There is no time limit while it is kept. Reads stop at once through admission; the files go on the next prune.
 
 // crewSyncedChatPruneEvery also repairs anything a missed change notice left behind.
@@ -51,8 +52,8 @@ func pruneAllCrewSyncedChats() {
 	}
 }
 
-// crewSyncedChatKept is the upload rule itself: wanted (an app agent on a Team that is on, or a joined terminal,
-// whose joining is its capture choice) and its maker still saved on the Team.
+// crewSyncedChatKept is the upload rule itself: wanted (a Live chat of an app agent on a Team that is on, or of a
+// joined terminal, whose joining is its capture choice) and its maker still saved on the Team.
 func crewSyncedChatKept(t crewTeam, a crewTeamRegisteredAgent) bool {
 	wanted, err := crewOfflineAppWanted(t, a)
 	return err == nil && wanted && crewTeamSourceRowAdmits(t, a.OwnerID, a)

@@ -233,7 +233,11 @@ func crewTeamReadChat(ctx context.Context, viewer, target string, args map[strin
 		log.Printf("[TEAM_CHAT_READ] project=%s agent=%s caller=%s event=refused reason=%s", t.ProjectID, a.ID, viewer, reason)
 		return nil, admissionRefused(text)
 	}
-	if a.OwnerID != viewer && a.Rule.ChatShare != crewChatShareLive {
+	if a.Rule.ChatShare != crewChatShareLive {
+		if a.OwnerID == viewer {
+			// A Hidden chat is not copied to the server (owner, 28 Nov); its person reads it where it runs.
+			return fail("chat_hidden_own", "Your chat with "+row.Name+" is hidden from teammates, so the server keeps no copy of it. Open it in the app, or set it to Live chat to keep a copy.")
+		}
 		return fail("chat_private", crewChatPrivateLine(a.OwnerID))
 	}
 	chat, err := crewTeamSyncedChatLines(t, a)
