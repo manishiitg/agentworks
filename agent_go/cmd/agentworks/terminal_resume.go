@@ -2,10 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -17,22 +14,13 @@ import (
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/agentworksclient"
 	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/chatterminal"
-	"github.com/manishiitg/coding-agent-loop/agent_go/pkg/fsutil"
 	"github.com/manishiitg/coding-agent-loop/workspace/crewroot"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/sessiontransfer"
 	"github.com/spf13/cobra"
 )
 
-type terminalReceipt struct {
-	Reference chatterminal.Reference `json:"chat"`
-	Receipt   string                 `json:"receipt"`
-	Session   string                 `json:"session"`
-	Native    string                 `json:"native"`
-	Folder    string                 `json:"folder"`
-}
-
 func resumeCommand(o *options) *cobra.Command {
-	return &cobra.Command{Use: "resume <chat>", Short: "Continue your own AgentWorks Claude chat in this terminal", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error { return runTerminalResume(cmd.Context(), o, args[0]) }}
+	return &cobra.Command{Use: "resume <chat>", Short: "Open a copy of your own AgentWorks Claude chat in this terminal", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error { return runTerminalResume(cmd.Context(), o, args[0]) }}
 }
 
 func terminalClient(o *options, server string) (*agentworksclient.Client, error) {
@@ -62,21 +50,6 @@ func terminalClient(o *options, server string) (*agentworksclient.Client, error)
 		}
 	}
 	return nil, fmt.Errorf("sign in to this chat's AgentWorks connection first with agentworks login --server %s", server)
-}
-
-func terminalReceiptPath(o *options, native string) (string, error) {
-	if !sessiontransfer.UUID.MatchString(native) {
-		return "", fmt.Errorf("invalid native session")
-	}
-	p, e := o.path()
-	if e != nil {
-		return "", e
-	}
-	dir := filepath.Join(filepath.Dir(p), "terminal-resume")
-	if e = os.MkdirAll(dir, 0700); e != nil {
-		return "", e
-	}
-	return filepath.Join(dir, native+".json"), nil
 }
 
 func terminalLocalFolder(ref chatterminal.Reference, hint string) (string, error) {
@@ -173,6 +146,7 @@ func localCrewFolders() ([]localCrewFolder, error) {
 	return out, nil
 }
 
+// The copy has its own new session ID, so an existing file is never replaced.
 func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (string, error) {
 	if e := b.ValidateFiles(); e != nil {
 		return "", e
@@ -181,41 +155,11 @@ func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (st
 		return "", e
 	}
 	if b.Provider != "claude-code" || len(b.Files) != 1 {
-		return "", fmt.Errorf("only one Claude journal can move")
+		return "", fmt.Errorf("only one Claude journal can be copied")
 	}
 	dest, e := sessiontransfer.Path(store, "projects/"+sessiontransfer.ClaudeSlug(folder)+"/"+b.SessionID+".jsonl", true)
 	if e != nil {
 		return "", e
-	}
-	var previous os.FileInfo
-	old, err := os.Open(dest)
-	if err == nil {
-		previous, err = old.Stat()
-		if err != nil {
-			old.Close()
-			return "", err
-		}
-		if !previous.Mode().IsRegular() || previous.Size() > b.Files["session.jsonl"].Size {
-			old.Close()
-			return "", fmt.Errorf("a different local Claude journal exists; nothing was overwritten")
-		}
-		hash := sha256.New()
-		_, err = io.CopyN(hash, old, previous.Size())
-		old.Close()
-		if err != nil {
-			return "", err
-		}
-		digest := hex.EncodeToString(hash.Sum(nil))
-		if previous.Size() == b.Files["session.jsonl"].Size && digest == b.Files["session.jsonl"].SHA256 {
-			return dest, nil
-		}
-		if previous.Size() > 0 {
-			if err = chatterminal.CheckPrefix(b.Root, previous.Size(), digest); err != nil {
-				return "", fmt.Errorf("this local Claude journal has different history; nothing was overwritten")
-			}
-		}
-	} else if !os.IsNotExist(err) {
-		return "", err
 	}
 	f, e := os.CreateTemp(filepath.Dir(dest), ".terminal-session-")
 	if e != nil {
@@ -236,16 +180,8 @@ func installTerminalJournal(store, folder string, b *sessiontransfer.Bundle) (st
 	if ce != nil {
 		return "", ce
 	}
-	if previous != nil {
-		current, err := os.Lstat(dest)
-		if err != nil || !current.Mode().IsRegular() || !os.SameFile(previous, current) || current.Size() != previous.Size() || !current.ModTime().Equal(previous.ModTime()) {
-			return "", fmt.Errorf("the local journal changed while preparing resume; nothing was overwritten")
-		}
-		if e = os.Rename(f.Name(), dest); e != nil {
-			return "", e
-		}
-	} else if e = os.Link(f.Name(), dest); e != nil {
-		return "", e
+	if e = os.Link(f.Name(), dest); e != nil {
+		return "", fmt.Errorf("a local Claude session with this ID already exists; nothing was overwritten")
 	}
 	return dest, nil
 }
@@ -270,17 +206,15 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 	}
 	reason = "claude_unavailable"
 	if _, e = exec.LookPath("claude"); e != nil {
-		return fmt.Errorf("install and sign in to Claude Code on this laptop first; the chat has not moved")
+		return fmt.Errorf("install and sign in to Claude Code on this laptop first")
 	}
-	reason = "folder_unavailable"
-	status, e := client.TerminalStatus(ctx, ref.Key)
+	reason = "server_refused"
+	command, e := client.TerminalCommand(ctx, ref.Key)
 	if e != nil {
 		return e
 	}
-	if status["out"] == true {
-		return fmt.Errorf("this chat is already in a terminal. Attach it back, or choose Continue here instead in AgentWorks")
-	}
-	hint, _ := status["local_folder"].(string)
+	reason = "folder_unavailable"
+	hint, _ := command["local_folder"].(string)
 	folder, e := terminalLocalFolder(ref, hint)
 	if e != nil {
 		return e
@@ -295,7 +229,7 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 	}
 	defer os.RemoveAll(dir)
 	reason = "fetch_failed"
-	body, e := client.TerminalSession(ctx, ref.Key, "fetch", "", nil)
+	body, e := client.TerminalSession(ctx, ref.Key, "fetch")
 	if e != nil {
 		return e
 	}
@@ -305,27 +239,21 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 		e = fmt.Errorf("chat identity mismatch")
 	}
 	if e != nil {
-		return fmt.Errorf("the session transfer could not be verified; use Continue here instead in AgentWorks to recover the chat")
-	}
-	abort := func() {
-		b, err := client.TerminalSession(ctx, ref.Key, "abort", t.Receipt, nil)
-		if err == nil {
-			b.Close()
-		}
+		return fmt.Errorf("the chat's session could not be verified; try again from the chat menu")
 	}
 	nativeID = t.Bundle.SessionID
 	reason = "local_folder_unavailable"
-	currentFolder, e := terminalLocalFolder(ref, t.LocalFolder)
-	if e == nil && currentFolder != folder {
-		e = fmt.Errorf("the project folder changed during this handoff; try again from the chat menu")
+	if current, err := terminalLocalFolder(ref, t.LocalFolder); err != nil || current != folder {
+		return fmt.Errorf("the project folder changed; try again from the chat menu")
 	}
+	// A copy with its own session ID: the AgentWorks chat keeps working.
+	reason = "copy_failed"
+	copied, e := sessiontransfer.ForkJSONL(t.Bundle, filepath.Join(dir, "copy"), folder)
 	if e != nil {
-		abort()
 		return e
 	}
 	home, e := os.UserHomeDir()
 	if e != nil {
-		abort()
 		return e
 	}
 	store := filepath.Join(home, ".claude")
@@ -333,124 +261,23 @@ func runTerminalResume(ctx context.Context, o *options, reference string) (resul
 		store = configured
 	}
 	if !filepath.IsAbs(store) {
-		abort()
 		return fmt.Errorf("Claude's configuration folder must be absolute")
 	}
 	reason = "journal_not_written"
-	if _, e = installTerminalJournal(store, folder, t.Bundle); e != nil {
-		abort()
+	if _, e = installTerminalJournal(store, folder, copied); e != nil {
 		return e
 	}
-	receiptPath, e := terminalReceiptPath(o, t.Bundle.SessionID)
-	if e != nil {
-		abort()
-		return e
-	}
-	receipt := terminalReceipt{Reference: ref, Receipt: t.Receipt, Session: t.Session, Native: t.Bundle.SessionID, Folder: folder}
-	if e = fsutil.WriteJSONAtomic(receiptPath, receipt, 0600); e != nil {
-		abort()
-		return e
-	}
-	fmt.Fprintf(o.stderr, "[CHAT_TERMINAL_RESUME] chat=%s session=%s action=written reason=verified_session\n", ref.Key, t.Bundle.SessionID)
-	cmd := exec.Command("claude", "--resume", t.Bundle.SessionID)
+	fmt.Fprintf(o.stderr, "[CHAT_TERMINAL_RESUME] chat=%s session=%s action=written reason=terminal_copy\n", ref.Key, copied.SessionID)
+	fmt.Fprintf(o.stderr, "This is a copy of the chat; the chat in AgentWorks keeps working on its own.\n")
+	cmd := exec.Command("claude", "--resume", copied.SessionID)
 	cmd.Dir = folder
 	cmd.Stdin = o.stdin
 	cmd.Stdout = o.stdout
 	cmd.Stderr = o.stderr
 	reason = "launch_failed"
 	if e = cmd.Start(); e != nil {
-		abort()
 		return e
 	}
-	fmt.Fprintf(o.stderr, "[CHAT_TERMINAL_RESUME] chat=%s session=%s action=resumed reason=terminal_started\n", ref.Key, t.Bundle.SessionID)
 	reason = "terminal_exit_nonzero"
 	return cmd.Wait()
-}
-
-// Called only after the existing attach path proves its exact live session.
-// A recovered/superseded terminal cannot overwrite the original chat.
-func returnTerminalChat(ctx context.Context, o *options, chosen liveAgentSession) (bool, error) {
-	if chosen.provider != "claude" {
-		return false, nil
-	}
-	path, e := terminalReceiptPath(o, chosen.session)
-	if e != nil {
-		return false, e
-	}
-	raw, e := os.ReadFile(path)
-	if os.IsNotExist(e) {
-		return false, nil
-	}
-	if e != nil {
-		return true, e
-	}
-	var receipt terminalReceipt
-	if json.Unmarshal(raw, &receipt) != nil || receipt.Native != chosen.session {
-		return true, fmt.Errorf("invalid terminal return receipt")
-	}
-	if chosen.cwd == "" {
-		return true, fmt.Errorf("the exact project folder could not be verified; attach from the terminal where this chat was resumed")
-	}
-	root, e := filepath.EvalSymlinks(chosen.cwd)
-	if e != nil || root != receipt.Folder {
-		return true, fmt.Errorf("attach from the exact project folder where this chat was resumed")
-	}
-
-	client, e := terminalClient(o, receipt.Reference.Server)
-	if e != nil {
-		return true, e
-	}
-	status, e := client.TerminalStatus(ctx, receipt.Reference.Key)
-	if e != nil {
-		return true, e
-	}
-	if status["out"] != true {
-		_ = os.Remove(path)
-		return false, nil // Superseded: normal attach may register this as a separate native chat.
-	}
-	home, e := os.UserHomeDir()
-	if e != nil {
-		return true, e
-	}
-	store := filepath.Join(home, ".claude")
-	if configured := o.getenv("CLAUDE_CONFIG_DIR"); configured != "" {
-		store = configured
-	}
-	dir, e := os.MkdirTemp(filepath.Dir(path), "return-stage-")
-	if e != nil {
-		return true, e
-	}
-	defer os.RemoveAll(dir)
-	b, e := sessiontransfer.ExportJSONL("claude-code", "structured", store, receipt.Folder, receipt.Native, dir)
-	if e != nil {
-		return true, e
-	}
-	b.Files = map[string]sessiontransfer.File{"session.jsonl": b.Files["session.jsonl"]}
-	archive, e := os.CreateTemp(dir, "return-*.tar")
-	if e != nil {
-		return true, e
-	}
-	defer archive.Close()
-	e = chatterminal.Write(archive, chatterminal.Transfer{Reference: receipt.Reference, Receipt: receipt.Receipt, Session: receipt.Session, Bundle: b})
-	if e != nil {
-		return true, e
-	}
-	if _, e = archive.Seek(0, io.SeekStart); e != nil {
-		return true, e
-	}
-	response, e := client.TerminalSession(ctx, receipt.Reference.Key, "return", "", archive)
-	if e != nil {
-		var failure *agentworksclient.APIError
-		if errors.As(e, &failure) && failure.Code == "handoff_superseded" {
-			_ = os.Remove(path)
-			return false, nil
-		}
-		return true, e
-	}
-	response.Close()
-	if e = os.Remove(path); e != nil && !os.IsNotExist(e) {
-		return true, fmt.Errorf("the chat is back in AgentWorks, but its local return receipt could not be cleared")
-	}
-	fmt.Fprintf(o.stdout, "The chat is back in AgentWorks. This terminal copy is no longer the live one.\n")
-	return true, nil
 }

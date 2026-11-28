@@ -1503,16 +1503,8 @@
     "family": "sessions",
     "name": "terminal",
     "member": "sessions_terminal_crew",
-    "description": "Show the command to continue your own Claude chat in your terminal; showing it does not move the chat.",
+    "description": "Show the command that opens a copy of your own Claude chat in your terminal; the chat keeps working here.",
     "source": "manage_crew_chats",
     "source_action": "terminal"
-  },
-  {
-    "family": "sessions",
-    "name": "continue_here",
-    "member": "sessions_continue_here_crew",
-    "description": "Recover your own chat here instead of its terminal copy, superseding the old handoff.",
-    "source": "manage_crew_chats",
-    "source_action": "continue_here"
   }
 ]

@@ -12,16 +12,13 @@ import (
 
 // TerminalSession is deliberately separate from tool-result JSON: the one
 // journal may exceed the ordinary tool response budget and is streamed.
-func (c *Client) TerminalSession(ctx context.Context, key, action, receipt string, body io.Reader) (io.ReadCloser, error) {
+func (c *Client) TerminalSession(ctx context.Context, key, action string) (io.ReadCloser, error) {
 	q := url.Values{"conversation_key": {key}, "action": {action}}
-	if receipt != "" {
-		q.Set("receipt", receipt)
-	}
 	method := http.MethodPost
-	if action == "status" {
+	if action == "command" {
 		method = http.MethodGet
 	}
-	req, e := http.NewRequestWithContext(ctx, method, c.baseURL+"/api/external/v1/chats/terminal?"+q.Encode(), body)
+	req, e := http.NewRequestWithContext(ctx, method, c.baseURL+"/api/external/v1/chats/terminal?"+q.Encode(), nil)
 	if e != nil {
 		return nil, e
 	}
@@ -30,9 +27,6 @@ func (c *Client) TerminalSession(ctx context.Context, key, action, receipt strin
 		return nil, e
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/x-tar")
-	}
 	client := *c.http
 	client.Timeout = 15 * time.Minute
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
@@ -52,13 +46,13 @@ func (c *Client) TerminalSession(ctx context.Context, key, action, receipt strin
 	}
 	_ = json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&out)
 	if out.Error.Message == "" {
-		out.Error.Message = "The chat could not move. Use its menu in AgentWorks to recover or try again."
+		out.Error.Message = "The chat could not be copied to your terminal. Try again from its menu in AgentWorks."
 	}
 	return nil, &APIError{Status: resp.StatusCode, Code: out.Error.Code, Message: out.Error.Message}
 }
 
-func (c *Client) TerminalStatus(ctx context.Context, key string) (map[string]any, error) {
-	body, e := c.TerminalSession(ctx, key, "status", "", nil)
+func (c *Client) TerminalCommand(ctx context.Context, key string) (map[string]any, error) {
+	body, e := c.TerminalSession(ctx, key, "command")
 	if e != nil {
 		return nil, e
 	}
@@ -66,7 +60,7 @@ func (c *Client) TerminalStatus(ctx context.Context, key string) (map[string]any
 	var out map[string]any
 	e = json.NewDecoder(io.LimitReader(body, 64<<10)).Decode(&out)
 	if e != nil {
-		return nil, fmt.Errorf("invalid terminal handoff status")
+		return nil, fmt.Errorf("invalid terminal command reply")
 	}
 	return out, nil
 }

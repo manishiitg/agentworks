@@ -231,9 +231,6 @@ func (api *StreamingAPI) crewSessionCanControl(r *http.Request, session string) 
 }
 
 func crewQueryTabWriteError(ctx context.Context, caller, profile, workspace, session string) error {
-	if refusal := chatTerminalTurnRefusal(session); refusal != "" {
-		return fmt.Errorf("%s", refusal)
-	}
 	if len(crewOwnerTabPeople(caller, workspace)) == 0 {
 		return nil
 	}

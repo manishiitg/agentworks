@@ -6,7 +6,7 @@ import { applyNextPromptKey } from '../utils/nextPrompt'
 import { useNextPrompt } from './chat/useNextPrompt'
 import { NextStepsCard, NextStepsSlot, useNextSteps } from './chat/NextStepsCard'
 import { BtwPanel } from './chat/BtwPanel'
-import { TerminalResumeNotice, useChatTerminalOut } from './chat/TerminalResume'
+import { TerminalCommandPopup } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
@@ -448,7 +448,6 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   const storeActiveTabId = useChatStore(state => state.activeTabId)
   const activeTabId = scopedTabId === null ? null : (scopedTabId ?? storeActiveTabId)
   const forkFeedback = useChatForkFeedback(activeTabId)
-  const terminalOut = useChatTerminalOut(activeTabId)
   // Use the scoped tab as the mode source when ChatInput is embedded. The global
   // mode category can lag behind WorkflowLayout, which would otherwise make a
   // workflow builder input behave like product-profile chat.
@@ -3033,7 +3032,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   return (
     <TooltipProvider>
       <ChatComposerBand product={isProductSurface}>
-      <TerminalResumeNotice tabId={activeTabId} />
+      <TerminalCommandPopup tabId={activeTabId} />
       {forkFeedback && <div role="status" aria-live="polite" className="flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground">
         {forkFeedback.pending ? <><LoadingIndicator aria-hidden="true" className="h-3.5 w-3.5 shrink-0" /><span>Forking this chat… The new tab will open when ready.</span></> : <>
           <span className="min-w-0 flex-1 break-words">{forkFeedback.error}</span>
@@ -3042,7 +3041,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         </>}
       </div>}
       {/* A chat continued outside the app keeps its draft here until it returns. */}
-      <div id={terminalComposerId} hidden={terminalOut} data-testid="message-composer">
+      <div id={terminalComposerId} data-testid="message-composer">
       {/* Read-only workflow/Crew references — same style as FileContextDisplay */}
       {(tabConfig?.workflowContext?.length ?? 0) > 0 && (
         <div className={inputPadX}>

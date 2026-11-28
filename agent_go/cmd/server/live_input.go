@@ -379,10 +379,6 @@ func copyInternalResponse(w http.ResponseWriter, recorded *internalResponseCaptu
 // deliverQueryAsLiveInputNow performs the delivery synchronously; see
 // tryDeliverQueryAsLiveInput for the response-time bound around it.
 func (api *StreamingAPI) deliverQueryAsLiveInputNow(w http.ResponseWriter, r *http.Request, sessionID, message, queryID string, recovered *[]string, receivedAt ...time.Time) (handled bool) {
-	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
-		externalError(w, 409, "continued_in_terminal", refusal)
-		return true
-	}
 	attribution, _ := r.Context().Value(deliveredAgentMessageKey{}).(map[string]interface{})
 	// Not delivered: the caller starts a new turn under the same query ID, and that turn keeps the before-snapshot
 	// prepared here. Abandoning it marked every such turn's snapshot unavailable (server B 2026-10-28, PLAT-746-158).

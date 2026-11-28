@@ -1823,11 +1823,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
-		externalError(w, 409, "continued_in_terminal", refusal)
-		return
-	}
-
 	// Get current user ID for session isolation
 	currentUserID := GetUserIDFromContext(r.Context())
 	// A Code chat belongs to its pinned person: nothing else (a live-input
@@ -2327,10 +2322,6 @@ func (api *StreamingAPI) handleQuery(w http.ResponseWriter, r *http.Request) {
 			releaseInputLane()
 		}
 	}()
-	if refusal := chatTerminalTurnRefusal(sessionID); refusal != "" {
-		externalError(w, 409, "continued_in_terminal", refusal)
-		return
-	}
 	// Another request may have durably queued while this request acquired
 	// the lane. Give the drainer its older turn before doing any agent work.
 	if releaseInputLane != nil && shouldYieldToConversationBacklog(r.Context()) && shouldUseDurableConversationTurnQueue(req) && api.conversationTurnHasBacklog(currentUserID, sessionID) {
