@@ -232,7 +232,7 @@ export function AgentHoverCard({ info, children, side = 'below', clickToOpen = f
       {(!clickToOpen || sheet) && <div className="flex items-center gap-2 text-sm font-semibold"><p className="min-w-0 flex-1 truncate">{info.name}</p>{shortcut && <kbd className="rounded border border-border px-1 font-sans text-[10px] font-normal text-muted-foreground">{AGENT_KEY}{shortcut}</kbd>}{clickToOpen && close('Close agent details')}</div>}
       {!clickToOpen && <AgentModelRow tabId={info.tabId} />}
       {clickToOpen ? <AgentDetailSection title="Setup" value={setupValue}>{setupDetails}</AgentDetailSection> : setupDetails}
-      {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent" aside={<CodingAppIcons />}><AgentMessageFrom line={info.messageLine} copyText={info.messageCopy} online={info.messageOnline} /></AgentDetailSection>}
+      {clickToOpen && info.messageLine && <AgentDetailSection title="Message it from another agent" aside={info.messageOnline ? undefined : <CodingAppIcons />}><AgentMessageFrom line={info.messageLine} copyText={info.messageCopy} online={info.messageOnline} /></AgentDetailSection>}
       {!shareShortcut && info.sharing && <HeaderAgentSharing {...info.sharing} status={!info.owner ? <AgentOnlineCopyStatus setup={info.setup} /> : undefined} />}
       {info.owner ? <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Whose</span><span className="min-w-0 truncate text-muted-foreground">{info.owner}'s · shared with the team</span></div>
         : !info.sharing && <div className="flex justify-between gap-3 border-t border-border py-1.5"><span>Shared with</span><span className="min-w-0 truncate text-muted-foreground">{info.sharedWith || 'Only you'}</span></div>}

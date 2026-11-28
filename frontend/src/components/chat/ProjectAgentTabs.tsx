@@ -13,7 +13,6 @@ import { forkChatTab } from '../../utils/forkChatTab'
 import { createPortal } from 'react-dom'
 import { Fragment, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent, type ReactNode } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, GripVertical, Info, Loader2, MoreHorizontal, Pencil, Plus, X } from 'lucide-react'
-import { getApiBaseUrl } from '../../services/api'
 import type { AgentProfileSideChat } from '../../services/api-types'
 import { useChatStore, type ChatTab } from '../../stores/useChatStore'
 import { useProductSurfaceStore } from '../../stores/useProductSurfaceStore'
@@ -232,13 +231,9 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
     return connection ? state.connections.find(item => item.id === connection)?.user?.id : undefined
   })
   const me = remoteMe ?? localMe
-  // Where other agents reach this project (owner, 28 Nov): an online project through its server (the website's own, or
-  // the server a project opened in the Mac app comes from); a project on this Mac through the Mac app, never a server.
-  const remoteServer = useConnectedWorkStore(state => {
-    const connection = remoteProjectConnection(placeProject)
-    return connection ? state.connections.find(item => item.id === connection)?.server : undefined
-  })
-  const onlineServer = (remoteServer || (hasDesktopConnections() ? '' : getApiBaseUrl() || window.location.origin)).replace(/\/+$/, '') || undefined
+  // An online project (on the website, or a server project opened in the Mac app) is reached only through its Team;
+  // agents on this Mac message only this Mac's projects (owner, 28 Nov).
+  const onlineProject = Boolean(remoteProjectConnection(placeProject)) || !hasDesktopConnections()
   const tabOwnerId = (tab: ChatTab) => {
     if (canControl(tab)) return ''
     const owner = listedFor(tab)?.tab_owner_id || tab.metadata?.agentProfileTabOwnerID || 'someone'
@@ -312,8 +307,8 @@ export function ProjectAgentTabs({ tabs, listed, canonicalTabId, projectName, al
         lastAsked: ask && placeProject ? { who: ask.sender, when: ago || '', active: ask.active, open: () => { void openCrewAskThread(placeProject, ask) } } : undefined,
         // Your own agents message it with this line, Team on or not (owner, 28 Nov: the menu must say how agents message it).
         messageLine: `Ask the "${tabLabel(tab)}" agent in ${projectName} to …`,
-        messageCopy: agentMessagePrompt(tabLabel(tab), projectName, onlineServer),
-        messageOnline: Boolean(onlineServer),
+        messageCopy: agentMessagePrompt(tabLabel(tab), projectName),
+        messageOnline: onlineProject,
         instructions: { set: tab.tabId === canonicalTabId ? undefined : Boolean(listedFor(tab)?.has_instructions), onEdit: () => setUpAgentInstructions(tab.tabId) },
         onSharing: placeProject && id ? () => openCrewAccess(placeProject, id) : undefined,
         onRemove: isAgentTab(tab) && canControl(tab) ? () => closeProjectTab(tab.tabId) : undefined,
