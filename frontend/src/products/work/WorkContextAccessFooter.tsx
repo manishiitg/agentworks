@@ -146,19 +146,13 @@ export function WorkContextAccessFooter({
 
   // Team and Online (owner, 11 Nov: the Share row split in two): Team says Off or how many people, Online where the
   // Crew lives (its state icon); the server words both.
-  // Remote Control and AgentBridge share one line (owner, 27 Nov), each still opening its own page;
-  // AgentBridge keeps its natural width so Remote Control gets the rest (a 50/50 split was too cramped).
-  // Either can be hidden into Connections (owner, 28 Nov, #4486), like Team and Project activity before setup.
-  const bridgeItem = remoteHidden || bridgeHidden ? undefined : accessItems.find(item => item.id === 'mcp:agentbridge')
-  const onlyBridge = remoteHidden && !bridgeHidden ? accessItems.find(item => item.id === 'mcp:agentbridge') : undefined
+  // Remote Control and AgentBridge are two rows with their own pages (owner, 28 Nov: "make it two lines only");
+  // either can be hidden into Connections (#4486), like Team and Project activity before setup.
   const hideButton = (label: string, onHide: () => void) => <button type="button" onClick={onHide} aria-label={`Hide ${label}`} title={`Hide ${label}. It stays in Connections.`} className="flex h-5 w-4 shrink-0 items-center justify-center rounded text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/hide:opacity-100"><X aria-hidden="true" className="h-3 w-3" /></button>
-  const remoteRow = (item: CrewMenuItem, compact: boolean) => <div className="group/hide flex min-w-0 flex-1 items-center"><div className="min-w-0 flex-1"><CrewOnlineRow compact={compact} state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div>{hideButton('Remote Control', onHideRemote)}</div>
-  const bridgeRow = (item: CrewMenuItem, full: boolean) => <div className={`group/hide flex items-center ${full ? 'min-w-0 flex-1' : 'shrink-0'}`}><div className={full ? 'min-w-0 flex-1' : ''}><Row icon={item.icon} onClick={() => onOpen(item)}>{item.label}</Row></div>{hideButton(item.label, onHideBridge)}</div>
   const renderAccessRow = (item: CrewMenuItem) => item.id === 'mcp:online'
-    ? onlyBridge ? <div key={item.id} className="flex">{bridgeRow(onlyBridge, true)}</div>
-      : bridgeItem
-      ? <div key={item.id} className="flex items-center gap-1">{remoteRow(item, true)}<span aria-hidden className="h-4 w-px shrink-0 bg-border" />{bridgeRow(bridgeItem, false)}</div>
-      : <div key={item.id} className="flex">{remoteRow(item, false)}</div>
+    ? <div key={item.id} className="group/hide flex items-center"><div className="min-w-0 flex-1"><CrewOnlineRow state={computerState} theirs={theirs} onOpen={() => onOpen(item)} /></div>{hideButton('Remote Control', onHideRemote)}</div>
+    : item.id === 'mcp:agentbridge'
+    ? <div key={item.id} className="group/hide flex items-center"><div className="min-w-0 flex-1"><Row icon={item.icon} onClick={() => onOpen(item)}>{item.label}</Row></div>{hideButton(item.label, onHideBridge)}</div>
     : item.id === 'mcp:team' && teamState.view?.team.on ? <div key={item.id}><TeamPanelHeader onName={() => openCrewAccess(projectId, '', 'team')} view={teamState.view} connection={teamState.target?.connection} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} expanded={showTeam} onToggle={onToggleTeamCollapsed} needsCount={needsCount} /><PendingAgentForks state={teamState} place="menu" /></div>
     : noTeamYet && item.id === 'mcp:team' ? (teamHidden ? null : <div key={item.id}>
       {/* No Team yet (owner, 18 Nov; ⓘ card and Hide into Connections, #3780). */}
@@ -170,8 +164,8 @@ export function WorkContextAccessFooter({
 
   const teamTree = (teamLines.length > 0 || teamState.view?.team.on || !!teamState.error) && <div role="list" aria-label="Team details" className={showTeam ? 'pb-1' : undefined}><CrewTeamPanel projectId={projectId} scope={scope} team={teamState} collapsed={!showTeam} selectedPerson={selectedPerson} onPersonSelect={onSelectPerson} onPanelView={onOpenTeamPane} askAgent={askAgent} />{!teamState.view?.team.on && renderTreeLines(teamLines)}</div>
 
-  const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) && item.id !== 'mcp:agentbridge'
-    && !(item.id === 'mcp:online' && remoteHidden && (bridgeHidden || !accessItems.some(other => other.id === 'mcp:agentbridge'))))
+  const visibleItems = accessItems.filter(item => (item.id !== 'mcp:artifacts' || artifactLines.some(line => (line.dashboards?.length || 0) > 0)) 
+    && !(item.id === 'mcp:online' && remoteHidden) && !(item.id === 'mcp:agentbridge' && bridgeHidden))
 
   return <div className="space-y-0.5">
     {visibleItems.map(item => <div key={item.id}>
