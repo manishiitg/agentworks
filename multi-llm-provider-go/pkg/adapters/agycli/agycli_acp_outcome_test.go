@@ -121,3 +121,48 @@ func TestAgyACPTypedErrorsClassifyQuotaRetryAndUnavailableModel(t *testing.T) {
 		}
 	}
 }
+
+// T3 Code #44294: a silent prompt counts as finished only when agy's newest step after the turn's floor is its reply,
+// marked done. An older reply, a reply still being written, or a step after the reply does not count.
+func TestAgyACPReplyFinishedReadsTheNewestStep(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".gemini", "antigravity-cli", "conversations")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(dir, "native.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE steps(idx INTEGER PRIMARY KEY,step_type INTEGER,status INTEGER,step_payload BLOB)`); err != nil {
+		t.Fatal(err)
+	}
+	insert := func(idx, typ, status int) {
+		t.Helper()
+		if _, err := db.Exec(`INSERT OR REPLACE INTO steps VALUES(?,?,?,x'')`, idx, typ, status); err != nil {
+			t.Fatal(err)
+		}
+	}
+	insert(0, agyStepAssistant, agyStepStatusDone)
+	finished := agyACPOutcome{home: home}.BeginFinished("native")
+	if finished() {
+		t.Fatal("the previous turn's reply counted as this turn's")
+	}
+	insert(1, agyStepUser, agyStepStatusDone)
+	insert(2, agyStepAssistant, 2)
+	if finished() {
+		t.Fatal("a reply still being written counted as finished")
+	}
+	insert(2, agyStepAssistant, agyStepStatusDone)
+	if !finished() {
+		t.Fatal("a done reply did not count as finished")
+	}
+	insert(3, agyStepToolCall, 2)
+	if finished() {
+		t.Fatal("a step after the reply was ignored")
+	}
+	if (agyACPOutcome{home: home}).BeginFinished("missing")() {
+		t.Fatal("a missing conversation counted as finished")
+	}
+}

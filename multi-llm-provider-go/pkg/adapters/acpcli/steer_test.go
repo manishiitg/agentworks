@@ -80,3 +80,48 @@ func TestAgySteersWithPromptFromVersion150(t *testing.T) {
 		}
 	}
 }
+
+type finishedOutcome struct {
+	refusalOutcome
+	finished bool
+}
+
+func (o finishedOutcome) BeginFinished(string) func() bool { return func() bool { return o.finished } }
+
+// T3 Code #44294: agy writes its whole reply and never answers session/prompt. Once the turn has been silent with
+// nothing running, and agy's record shows the reply done, the turn ends with that reply instead of loading forever,
+// and the stuck process is stopped so the next message starts it again.
+func TestAgySilentPromptWithAFinishedReplyEndsTheTurn(t *testing.T) {
+	previousAfter, previousEvery := silentPromptAfter, silentCheckEvery
+	silentPromptAfter, silentCheckEvery = 100*time.Millisecond, 20*time.Millisecond
+	t.Cleanup(func() { silentPromptAfter, silentCheckEvery = previousAfter, previousEvery })
+	SetLaunch("agy", func(LaunchRequest) (*LaunchSpec, error) {
+		return &LaunchSpec{Env: []string{"GEMINI_API_KEY=test-only"}, AutoApprove: true, QuestionIDPrefix: "interaction_", NoSessionMCP: true, Outcome: finishedOutcome{finished: true}}, nil
+	})
+	t.Cleanup(func() { SetLaunch("agy", nil) })
+	workdir, owner := t.TempDir(), "chat-agy-silent"
+	peer := installReplay(t, "agy_silent_prompt", workdir)
+	type outcome struct {
+		resp *llmtypes.ContentResponse
+		err  error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		resp, err := Generate(context.Background(), "agy", "gemini-4-pro-high", human("write it"), agyCall(owner, workdir, ""))
+		done <- outcome{resp, err}
+	}()
+	var got outcome
+	select {
+	case got = <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the silent turn never ended")
+	}
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	if answer := got.resp.Choices[0].Content; answer != "All written." {
+		t.Fatalf("answer = %q, want the finished reply", answer)
+	}
+	peer.wait(t)
+	CloseAgentSession(owner, "agy")
+}
