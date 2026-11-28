@@ -8,6 +8,7 @@ import { NextStepsCard, NextStepsSlot, useNextSteps } from './chat/NextStepsCard
 import { BtwPanel } from './chat/BtwPanel'
 import { TerminalCommandPopup } from './chat/TerminalResume'
 import { supportsNativeGoal } from '../utils/nativeGoalCapability'
+import type { NativeGoalUpdate } from '../../shared/session/transcript/nativeGoal'
 import { useChatDisplayStore } from '../stores/useChatDisplayStore'
 import { dismissChatForkFeedback, forkChatTab, useChatForkFeedback } from '../utils/forkChatTab'
 import { UploadingAttachments } from './chat/UploadingAttachments'
@@ -191,6 +192,9 @@ interface ChatInputProps {
   pendingNativeChoice?: boolean
   /** Set while a plan or question waits: a sent message is the person's changes to the plan or their own answer (#3711). */
   typedAnswer?: { send: (text: string) => Promise<void>; plan: boolean }
+  // The chat's goal (the pinned goal bar's state) and how to send its /goal commands, for the Mode menu (#4623).
+  chatGoal?: NativeGoalUpdate
+  onGoalCommand?: (command: string) => void
   showNewChatAction?: boolean
   hideRuntimeStatus?: boolean
   showProductSteerAction?: boolean
@@ -429,6 +433,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
   placeholderOverride,
   pendingNativeChoice = false,
   typedAnswer,
+  chatGoal,
+  onGoalCommand,
   showNewChatAction = false,
   hideRuntimeStatus = false,
   showProductSteerAction = false,
@@ -2953,13 +2959,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
     if (placeholderOverride) return placeholderOverride
     if (planReady) return 'Type changes to the plan, or press Start…'
     if (planOn) return 'Describe what to plan… (nothing changes until you approve)'
+    if (goalOn) return 'Describe the goal: when is the work done?'
     if (isProductSurface || activeTab?.metadata?.agentProfileId === 'work') return 'Ask anything…'
     if (agentProfileWorkspace) return 'Describe the video you want to make…'
     if (isWorkflowPhaseChat) {
       return 'Chat with the automation builder…'
     }
     return 'Ask anything…'
-  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, typedAnswer, planOn, planReady])
+  }, [agentProfileWorkspace, isProductSurface, activeTab?.metadata?.agentProfileId, isViewOnly, viewOnlyWriter, isWorkflowPhaseChat, placeholderOverride, pendingNativeChoice, typedAnswer, planOn, planReady, goalOn])
 
   // Product chats use the roomier project layout; workflow mode keeps the
   // existing toolbar alignment.
@@ -3607,7 +3614,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 {/* The mode menu (#3885): Auto / Auto-review / Plan, and what the chat can reach with Change. */}
                 {(nativePlanSupported || (nativeGoalSupported && !isViewOnly) || (agentProfileId === 'work' && tabSessionId)) && <ChatModeMenu key={tabSessionId || activeTabId || 'chat-mode'} sessionId={agentProfileId === 'work' ? tabSessionId || undefined : undefined} projectId={agentProfileId === 'work' ? agentProfileProjectId || undefined : undefined}
                   plan={nativePlanSupported ? { on: planOn } : undefined} planReady={planReady} onPlanToggle={togglePlanMode} onStart={startPlannedWork}
-                  goal={nativeGoalSupported && !isViewOnly ? { on: goalOn } : undefined} onGoalToggle={toggleGoalMode} />}
+                  goal={nativeGoalSupported && !isViewOnly ? { on: goalOn, running: chatGoal?.goal?.status === 'active' ? { objective: chatGoal.goal.objective, stopOnly: chatGoal.provider === 'agy-cli' } : undefined } : undefined}
+                  onGoalToggle={toggleGoalMode} onGoalCommand={onGoalCommand} />}
                 {agentProfileId === 'work' && tabSessionId && <ContextRing sessionId={tabSessionId} busy={isTurnInFlight} />}
                 {agentProfileId === 'work' && <CodeChatConnectionStatus sessionId={activeTab?.sessionId || ''} />}
                 {/* A Code/Crew tab names its account: global:<provider> (or empty: the selected provider's server account) is a shared account with its own limit; anything else is the person's own. */}

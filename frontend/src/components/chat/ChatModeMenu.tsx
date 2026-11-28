@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown, ChevronRight, ListChecks, Target } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, ListChecks } from 'lucide-react'
 import { useChatContextView } from '../../products/work/useChatContextView'
 import { changeChatContext, menuLabelClass, menuRowClass } from '../../products/work/ChatContextItems'
 import api, { workFolderApi } from '../../services/api'
@@ -19,7 +19,7 @@ const ROWS: Row[] = [
   { id: 'auto_review', label: 'Auto-review', chip: 'Auto-review', detail: 'The coding app’s own reviewer approves each action and refuses risky ones.' },
   { id: 'plan', label: 'Plan', chip: 'Plan', detail: 'Proposes a plan and changes nothing until you approve it.' },
   // Goal (#4604): the coding app's own goal command; the next message is the goal. Only apps the server says have one.
-  { id: 'goal', label: 'Goal', chip: 'Goal', detail: 'Keeps working until the goal in your next message is finished.' },
+  { id: 'goal', label: 'Goal', chip: '🎯 Goal', detail: 'Keeps working until a goal you set is done. Your next message is the goal.' },
 ]
 
 // Reply style (owner, 26 Nov, like Claude Desktop's Output style), for every coding app.
@@ -57,7 +57,7 @@ function useReach(open: boolean, reloadTick: number) {
 
 export const openCrewMacFoldersEvent = 'agentworks:open-crew-mac-folders'
 
-export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanToggle, goal, onGoalToggle, onStart }: {
+export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanToggle, goal, onGoalToggle, onGoalCommand, onStart }: {
   sessionId?: string
   // The Crew project this chat belongs to: its side panel opens Folders on this Mac.
   projectId?: string
@@ -66,8 +66,11 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   planReady?: boolean
   onPlanToggle: () => void
   // Goal: shown only when this chat's coding app has its own goal command; on, the next message is sent as the goal.
-  goal?: { on: boolean }
+  // running: the chat's goal while it works (the pinned goal bar's state); stopOnly when the app can only stop it.
+  goal?: { on: boolean; running?: { objective: string; stopOnly?: boolean } }
   onGoalToggle?: () => void
+  // Sends the same /goal command the goal bar sends.
+  onGoalCommand?: (command: string) => void
   onStart?: () => void
 }) {
   const view = useChatContextView(sessionId || '')
@@ -120,7 +123,10 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
     try { await changeChatContext(sessionId, change) } finally { setSaving(false) }
   }
   const option = (id: Row['id']) => access?.options.find(item => item.mode === id)
-  const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : item.id === 'goal' ? Boolean(goal) : Boolean(access))
+  // While a goal works, its row shows the goal with the bar's actions instead of a choice.
+  const running = goal?.running
+  const rows = ROWS.filter(item => item.id === 'plan' ? Boolean(plan) : item.id === 'goal' ? Boolean(goal) && !running : Boolean(access))
+  const goalChip = goal?.on ? '🎯 Goal' : running && !plan?.on ? '🎯 Goal running' : ''
   // The saved mode this app cannot run here (Auto-review in a Codex chat) runs as This project: say so.
   const fallback = access && access.mode !== access.effective && !plan?.on && !goal?.on
   const wholeMac = Boolean(reach?.home) && Boolean(reach?.folders.some(folder => folder.path.replace(/\/+$/, '') === reach?.home && folder.access === 'read_write'))
@@ -143,8 +149,9 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
   return <Menu.Root modal={false} open={open} onOpenChange={setOpen}>
     <Menu.Trigger type="button" data-testid="plan-mode-chip" aria-pressed={plan?.on} aria-label={`Mode: ${row.label}. ${row.detail}`} title={`${row.label}: ${row.detail}${plan ? ' Shift+Tab switches Plan.' : ''}`} className={chipClass}>
       {current === 'plan' && <ListChecks className="h-3 w-3" aria-hidden="true" />}
-      {current === 'goal' && <Target className="h-3 w-3" aria-hidden="true" />}
-      <span className={fallback ? 'line-through decoration-muted-foreground/60' : undefined}>{row.chip}</span>
+      {goalChip
+        ? <span className="font-medium text-emerald-700 dark:text-emerald-400" data-testid="chat-mode-goal-chip">{goalChip}</span>
+        : <span className={fallback ? 'line-through decoration-muted-foreground/60' : undefined}>{row.chip}</span>}
       <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
     </Menu.Trigger>
     <Menu.Portal>
@@ -164,6 +171,17 @@ export function ChatModeMenu({ sessionId, projectId, plan, planReady, onPlanTogg
             </Menu.RadioItem>
           })}
         </Menu.RadioGroup>
+        {running && <div className={`${menuRowClass} items-start`} data-testid="chat-mode-goal-running">
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">Goal</span>
+            <span className="block break-words text-xs text-muted-foreground">Running: {running.objective}</span>
+            {onGoalCommand && <span className="mt-1 flex gap-3 text-xs">
+              <Menu.Item className="cursor-pointer rounded underline outline-none focus-visible:ring-2 focus-visible:ring-ring" onSelect={() => onGoalCommand('/goal pause')} data-testid="chat-mode-goal-pause">{running.stopOnly ? 'Stop' : 'Pause'}</Menu.Item>
+              <Menu.Item className="cursor-pointer rounded underline outline-none focus-visible:ring-2 focus-visible:ring-ring" onSelect={() => onGoalCommand('/goal clear')} data-testid="chat-mode-goal-clear">Clear goal</Menu.Item>
+            </span>}
+          </span>
+          <span className="pt-1 text-emerald-600" aria-hidden="true">●</span>
+        </div>}
         {fallback && <p className="px-2.5 pt-1 text-xs text-amber-700 dark:text-amber-400" data-testid="chat-mode-fallback">This coding app has no reviewer that works here, so this chat runs as Auto.</p>}
         {replies && <>
           <Menu.Separator className="my-1 h-px bg-border" />

@@ -58,6 +58,7 @@ import { isExecutionConversationTab } from '../utils/sessionEventSource'
 import { durableStreamStartCursor, nextForwardCursor } from '../utils/forwardCursor'
 import { clientMessageEventId, readClientMessageId } from '../utils/clientMessageIdentity'
 import { conversationToRestoredEvents } from '../../shared/session/restore'
+import { currentNativeGoal } from '../../shared/session/transcript/nativeGoal'
 import { logger } from '../utils/logger'
 import { SessionEventRecovery } from '../services/sessionEventRecovery'
 
@@ -922,6 +923,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
       ? normalizeTranscriptChunkEvents([...olderHistory.events, ...displayEvents])
       : displayEvents
   ), [displayEvents, olderHistory.events])
+  // The chat's goal, for the Mode menu (#4623): the same server goal state the pinned goal bar shows.
+  const chatGoal = useMemo(() => currentNativeGoal(transcriptEvents), [transcriptEvents])
   // Every helper this chat started, from any coding app (#3245).
   const chatHelpers = useChatHelpers(activeSessionId ?? undefined, transcriptEvents)
   // When the current turn began: the last message the person sent (#3245).
@@ -3950,6 +3953,8 @@ const ChatAreaInner = forwardRef((props: ChatAreaProps, ref: ForwardedRef<ChatAr
           placeholderOverride={scheduleOwnChat ? 'Reply to this schedule…' : composerPlaceholder}
           pendingNativeChoice={pendingCodingAgentChoice && !typedAnswerPrompt}
           typedAnswer={typedAnswerPrompt ? { send: sendTypedAnswer, plan: typedAnswerPrompt.requestKind === 'plan_approval' } : undefined}
+          chatGoal={chatGoal}
+          onGoalCommand={activeTab?.metadata?.isViewOnly || observingOwnerTab || isReadOnlyRunView ? undefined : resendProductMessage}
         />
       )}
       {/* A schedule's own chat takes replies from its owner (owner, 22 Nov); the next run continues it. */}
