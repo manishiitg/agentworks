@@ -68,6 +68,9 @@ type Agent struct {
 	// SteersWithPrompt, given the version the agent reports at initialize, says whether a session/prompt sent while
 	// one runs is a message into the running turn (see steer.go) rather than a queued or cancelling prompt.
 	SteersWithPrompt func(version string) bool
+	// StepsTool names a tool the agent keeps its checklist with (its rawInput.steps, each a title and a status)
+	// instead of ACP plan updates. Its calls become the chat's task list, not tool rows.
+	StepsTool string
 	// StrictResume fails a turn whose session/load fails instead of opening
 	// a new conversation.
 	StrictResume bool
@@ -239,6 +242,8 @@ var registry = map[string]Agent{
 		StrictResume:    true,
 		// agy acp 1.5.0 takes a prompt sent mid-turn into the running turn; the 1.4 harness queues it.
 		SteersWithPrompt: func(version string) bool { return versionAtLeast(version, 1, 5, 0) },
+		// agy reports its checklist only as "Run update_steps" tool calls (T3 Code #41923).
+		StepsTool: "update_steps",
 	},
 }
 
