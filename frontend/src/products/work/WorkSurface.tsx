@@ -45,7 +45,7 @@ import { UpdateProgressToast } from '../../components/UpdateProgressToast'
 import api, { agentApi } from '../../services/api'
 import type { AgentProfileSideChat, PollingEvent } from '../../services/api-types'
 import { agentIdentitySaved } from '../../utils/agentPurposeDraft'
-import { listProjectSideChats } from './sideChatListCache'
+import { clearSideChatListCache, listProjectSideChats } from './sideChatListCache'
 import { useWorkChatModels } from './useWorkChatModels'
 import { useAppStore } from '../../stores/useAppStore'
 import { useChatStore, waitForChatStoreHydration, type ChatTab } from '../../stores/useChatStore'
@@ -847,10 +847,28 @@ export function WorkChatTabs({ projectId, projectName, canonicalTabId, profileId
   const renameSideChat = async (tab: ChatTab, name: string) => {
     const title = name.trim()
     if (!title || !tab.sessionId) return false
-    await agentApi.renameChatHistorySession(tab.sessionId, title, tab.metadata?.agentProfileWorkspace)
+    const previousTabName = tab.name
+    const key = tab.metadata?.agentProfileConversationKey
+    const matchesRow = (row: AgentProfileSideChat) =>
+      row.session_id === tab.sessionId || (Boolean(key) && row.conversation_key === key)
+    let previousListed: AgentProfileSideChat[] | null = null
+    // Optimistically update both the tab and the server-listed row so the header and sidebar reflect the rename immediately.
     useChatStore.getState().renameTab(tab.tabId, title)
-    void syncRef.current()
-    return true
+    setListed(current => {
+      previousListed = current
+      return current ? current.map(row => (matchesRow(row) ? { ...row, name: title } : row)) : current
+    })
+    try {
+      await agentApi.renameChatHistorySession(tab.sessionId, title, tab.metadata?.agentProfileWorkspace)
+      clearSideChatListCache()
+      void syncRef.current()
+      return true
+    } catch {
+      useChatStore.getState().renameTab(tab.tabId, previousTabName)
+      if (previousListed !== null) setListed(previousListed)
+      useChatStore.getState().addToast('Could not rename this agent. Try again.', 'error')
+      return false
+    }
   }
   // A side chat is a second full Builder chat in the same project: same
   // folder, model, MCPs and skills as the primary, its own conversation.
