@@ -1554,7 +1554,7 @@ func generateContentWithRetry(a *Agent, ctx context.Context, messages []llmtypes
 		resetAt, exhausted = sharedModelQuotaExhaustion(key)
 	}
 	command, goalCommand := llmtypes.NativeGoalCommandForSession(ctx, a.sessionID)
-	nonModelGoalControl := goalCommand && model.Provider == "codex-cli" && (command.Action == "show" || command.Action == "pause" || command.Action == "clear")
+	nonModelGoalControl := goalCommand && (model.Provider == "codex-cli" || model.Provider == "muse-cli") && (command.Action == "show" || command.Action == "pause" || command.Action == "clear")
 	if exhausted && nonModelGoalControl {
 		logger.Info(fmt.Sprintf("[AGENT_GOAL] session=%s action=started reason=nonmodel_control_preserves_quota", a.sessionID))
 	}
