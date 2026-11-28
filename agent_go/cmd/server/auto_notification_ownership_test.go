@@ -66,3 +66,33 @@ func TestForeignCompletionCannotSteerOrEnterNotificationBatch(t *testing.T) {
 		t.Fatal("queued completion delivered into unrelated chat")
 	}
 }
+
+// A workflow result steered into a running Claude SDK reply joins that reply and never gets a completion of its own.
+// Its "Process background result" turn stayed running after the reply ended, so the chat showed as working until
+// Stop (Air-2 28 Nov). It must settle when the reply ends, and not before.
+func TestSteeredBackgroundResultSettlesWhenTheReplyEnds(t *testing.T) {
+	api := lifecycleTestAPI()
+	status := func() string {
+		api.trackedWorkflowExecutionsMux.RLock()
+		defer api.trackedWorkflowExecutionsMux.RUnlock()
+		return api.trackedWorkflowExecutions["synthetic-turn:joined"].Status
+	}
+	api.trackSyntheticConversationTurnStart("synthetic-turn:joined", "session", "turn", "workflow finished")
+	api.setSessionBusy("session", true)
+	done := make(chan struct{})
+	go func() { api.settleJoinedBackgroundResult("session", "synthetic-turn:joined"); close(done) }()
+
+	time.Sleep(100 * time.Millisecond)
+	if got := status(); got != trackedExecutionStatusRunning {
+		t.Fatalf("settled while the reply was still running: %s", got)
+	}
+	api.setSessionBusy("session", false)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("not settled after the reply ended")
+	}
+	if got := status(); got != trackedExecutionStatusCompleted {
+		t.Fatalf("status after the reply ended = %s, want completed", got)
+	}
+}
