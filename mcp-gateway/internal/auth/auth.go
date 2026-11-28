@@ -26,6 +26,9 @@ type Identity struct {
 	// ViaGroup is set when the caller authenticated with a group API key:
 	// only that group's grants apply, never the key's own (nonexistent) user.
 	ViaGroup string
+	// AllowedCrewVault is set only by the host runtime proxy (X-Vault-Crew-Vault)
+	// for a server Crew's own vault; external MCP and personal turns leave it empty.
+	AllowedCrewVault string
 }
 
 // Authenticator resolves a bearer token to an Identity.

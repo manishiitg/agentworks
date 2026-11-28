@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/manishiitg/coding-agent-loop/agent_go/cmd/server/services"
@@ -50,18 +52,30 @@ func GmailOAuthRoutes(router *mux.Router, api *StreamingAPI) {
 		gmailOAuthCallbackHandler(api)).Methods("GET")
 }
 
-// gmailOAuthRedirectURI derives the callback from the request that reached us,
-// so the flow works on whatever host and port the server is actually serving —
-// no configured base URL to drift out of sync.
+// gmailOAuthRedirectURI prefers PUBLIC_URL when configured, and otherwise
+// derives the callback from validated request headers so it works on local dev
+// without trusting arbitrary forwarded schemes or hosts.
 func gmailOAuthRedirectURI(r *http.Request) string {
+	if publicURL := strings.TrimRight(strings.TrimSpace(os.Getenv("PUBLIC_URL")), "/"); publicURL != "" {
+		return publicURL + gmailOAuthCallbackPath
+	}
 	scheme := "http"
-	if r.TLS != nil {
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		candidate := strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+		if candidate == "http" || candidate == "https" {
+			scheme = candidate
+		}
+	} else if r.TLS != nil {
 		scheme = "https"
 	}
-	if forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); forwarded != "" {
-		scheme = forwarded
+	host := strings.TrimSpace(r.Host)
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		candidate := strings.TrimSpace(strings.Split(forwardedHost, ",")[0])
+		if candidate != "" && !strings.ContainsAny(candidate, " \t\r\n/\\@?#") {
+			host = candidate
+		}
 	}
-	return fmt.Sprintf("%s://%s%s", scheme, r.Host, gmailOAuthCallbackPath)
+	return fmt.Sprintf("%s://%s%s", scheme, host, gmailOAuthCallbackPath)
 }
 
 func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
@@ -110,6 +124,9 @@ func startGmailOAuthHandler(api *StreamingAPI) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
+		if st := oauthURLStateParam(authURL); st != "" {
+			bindOAuthStartBrowser(w, r, st)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GmailOAuthStartResponse{AuthURL: authURL, RedirectURI: redirectURI})
 	}
@@ -137,11 +154,16 @@ func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 			writeGmailOAuthPage(w, false, "Sign-in failed", "Google did not return an authorization code.")
 			return
 		}
+		if !verifyOAuthCallbackBrowser(r, state) {
+			services.DiscardGmailOAuthState(state)
+			writeGmailOAuthPage(w, false, "Sign-in started in another browser", "Start again from the same browser.")
+			return
+		}
 		if person := services.GmailOAuthPendingPerson(state); oauthReturnBound(person) {
 			holdOAuthReturn(w, r, state, person, oauthReturnGmail, code)
 			return
 		}
-		email, err := api.finishGmailOAuth(r.Context(), state, code)
+		email, err := api.finishGmailOAuth(r.Context(), nil, state, code)
 		if err != nil {
 			writeGmailOAuthPage(w, false, "Sign-in failed", html.EscapeString(err.Error()))
 			return
@@ -155,7 +177,28 @@ func gmailOAuthCallbackHandler(api *StreamingAPI) http.HandlerFunc {
 }
 
 // finishGmailOAuth exchanges Google's code for the sign-in state names and saves the connection.
-func (api *StreamingAPI) finishGmailOAuth(ctx context.Context, state, code string) (string, error) {
+// When r carries an authenticated completing user, live authorization on the target connection
+// is re-checked before exchanging the code so a demoted admin or non-owner cannot overwrite it.
+func (api *StreamingAPI) finishGmailOAuth(ctx context.Context, r *http.Request, state, code string) (string, error) {
+	if r != nil && GetUserFromContext(r.Context()) != nil {
+		connID, ok := services.GmailOAuthPendingConnection(state)
+		if !ok {
+			return "", errors.New("this sign-in link has expired or was already used — start again from the Gmail settings")
+		}
+		svc, err := ensureGmailService()
+		if err != nil {
+			return "", err
+		}
+		conn, found := svc.GetConnection(connID)
+		if !found {
+			services.DiscardGmailOAuthState(state)
+			return "", fmt.Errorf("gmail connection %q not found", connID)
+		}
+		if !canManageGoogleAccount(r, conn) || (conn.IsPrivate() && conn.OwnerID != personalConnectionActor(r.Context())) {
+			services.DiscardGmailOAuthState(state)
+			return "", errors.New("you are no longer allowed to manage this Google account")
+		}
+	}
 	connectionID, email, scopes, err := services.CompleteGmailOAuth(ctx, state, code)
 	if err != nil {
 		log.Printf("[GMAIL] OAuth callback failed: %v", err)
@@ -186,6 +229,10 @@ func (api *StreamingAPI) finishGmailOAuth(ctx context.Context, state, code strin
 // writeGmailOAuthPage renders the small end-of-flow page the user lands on.
 func writeGmailOAuthPage(w http.ResponseWriter, success bool, title, detail string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
 	if !success {
 		w.WriteHeader(http.StatusBadRequest)
 	}

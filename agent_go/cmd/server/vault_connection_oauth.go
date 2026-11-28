@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strings"
@@ -120,10 +121,37 @@ func (api *StreamingAPI) vaultOAuthTemplate(ctx context.Context, id, name, resou
 		return mcpclient.MCPServerConfig{}, errors.New("connection does not match the configured OAuth provider")
 	}
 	copied := *cfg.OAuth
+	copied.ExtraAuthParams = defaultOAuthExtraParams(copied.AuthURL, copied.ExtraAuthParams)
 	cfg.OAuth = &copied
 	cfg.OAuth.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id))
 	return cfg, nil
 }
+
+// defaultOAuthExtraParams merges provider-required authorization query defaults
+// (such as Dropbox's token_access_type=offline so it issues a refresh token
+// instead of a 4-hour access-only token) without overwriting caller-set keys.
+func defaultOAuthExtraParams(authURL string, existing map[string]string) map[string]string {
+	var out map[string]string
+	if len(existing) > 0 {
+		out = make(map[string]string, len(existing)+1)
+		for k, v := range existing {
+			out[k] = v
+		}
+	}
+	if u, err := url.Parse(strings.TrimSpace(authURL)); err == nil && strings.EqualFold(u.Scheme, "https") {
+		host := strings.ToLower(u.Hostname())
+		if host == "dropbox.com" || host == "www.dropbox.com" {
+			if out == nil {
+				out = make(map[string]string, 1)
+			}
+			if strings.TrimSpace(out["token_access_type"]) == "" {
+				out["token_access_type"] = "offline"
+			}
+		}
+	}
+	return out
+}
+
 func (api *StreamingAPI) vaultOAuthConfig(ctx context.Context, id, name, resource string) (mcpclient.MCPServerConfig, error) {
 	cfg, err := api.vaultOAuthTemplate(ctx, id, name, resource)
 	if err != nil {
@@ -148,6 +176,18 @@ func vaultSavedOAuthConfig(id string, cfg mcpclient.MCPServerConfig) (mcpclient.
 	saved.TokenFile = cfg.OAuth.TokenFile
 	saved.ClientSecretFile = ""
 	saved.PublicOnly = cfg.OAuth.PublicOnly
+	// Merge catalog/provider default extra auth params (e.g. Dropbox offline refresh)
+	// so existing saved connections pick up refresh params on reconnect.
+	mergedExtra := defaultOAuthExtraParams(saved.AuthURL, cfg.OAuth.ExtraAuthParams)
+	if len(saved.ExtraAuthParams) > 0 {
+		if mergedExtra == nil {
+			mergedExtra = make(map[string]string, len(saved.ExtraAuthParams))
+		}
+		for k, v := range saved.ExtraAuthParams {
+			mergedExtra[k] = v
+		}
+	}
+	saved.ExtraAuthParams = mergedExtra
 	cfg.OAuth = &saved
 	return cfg, nil
 }

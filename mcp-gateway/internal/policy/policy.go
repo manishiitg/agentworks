@@ -102,9 +102,12 @@ func Authorize(s *store.MemoryStore, id auth.Identity, publicName string) (store
 }
 
 func authorize(s *store.MemoryStore, id auth.Identity, publicName string, checkPersistence bool) (store.ToolSnapshot, error) {
-	t, _, err := authorizeActiveTool(s, id, publicName, checkPersistence)
+	t, c, err := authorizeActiveTool(s, id, publicName, checkPersistence)
 	if err != nil {
 		return store.ToolSnapshot{}, err
+	}
+	if c.VaultID != "" && s.IsCrewVault(c.VaultID) && id.AllowedCrewVault != c.VaultID {
+		return store.ToolSnapshot{}, ErrNoGrant
 	}
 	if rules, governed, err := matchingRules(s, id, t); governed {
 		if err != nil {

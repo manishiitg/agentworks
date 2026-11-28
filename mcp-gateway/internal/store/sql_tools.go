@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"reflect"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -443,6 +442,9 @@ func (s *MemoryStore) MutateSQL(ctx context.Context, workspaceID, actor string, 
 		return empty, errors.New("provide 1 to 20 statements")
 	}
 	for _, statement := range statements {
+		if sqlpolicy.IsAdditiveSchema(statement.SQL) {
+			return empty, errors.New("schema changes are not allowed on Vault metadata tables")
+		}
 		table, err := sqlpolicy.MutationTarget(statement.SQL)
 		if err != nil {
 			return empty, err
@@ -535,6 +537,15 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 			}
 			g.BuiltIn = true
 		}
+		if previous, ok := old.Groups[g.ID]; ok && previous.IsVault() {
+			if previous.Name != g.Name || previous.Description != g.Description {
+				rows.Close()
+				return errors.New("vault groups cannot be modified with SQL")
+			}
+			g.Kind = previous.Kind
+			g.ProjectRoot = previous.ProjectRoot
+			g.Owners = append([]string(nil), previous.Owners...)
+		}
 		groups[g.ID] = g
 	}
 	if err = rows.Err(); err != nil {
@@ -549,6 +560,11 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 		if g.BuiltIn {
 			if _, exists := groups[id]; !exists {
 				return errors.New("built-in group cannot be deleted")
+			}
+		}
+		if g.IsVault() {
+			if _, exists := groups[id]; !exists {
+				return errors.New("vault group cannot be deleted with SQL")
 			}
 		}
 		delete(state.Groups, id)
@@ -641,6 +657,17 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 					return errors.New("Vault access is group-only: user_tool_grants rows can only be deleted; grant the tool to a group instead")
 				}
 			}
+			if table == "group_tool_grants" {
+				connector := state.Connectors[tool.ConnectorID]
+				if connector.VaultID != "" && connector.VaultID != id {
+					rows.Close()
+					return errors.New("private or Crew vault connector tools cannot be granted to another group")
+				}
+				if groups[id].IsVault() && connector.VaultID != id {
+					rows.Close()
+					return errors.New("vault group grants cannot be modified with SQL")
+				}
+			}
 			if !wasGranted && (tool.Status != StatusActive || tool.Fingerprint != tool.ApprovedFingerprint || state.Governed[w][value]) {
 				rows.Close()
 				return errors.New("new grants require an approved active tool without a governing policy; edit saved permissions through save_permissions instead")
@@ -658,12 +685,38 @@ func (s *MemoryStore) importSQL(tx *sql.Tx, w string, state *durableState) error
 		rows.Close()
 	}
 	for gid, g := range groups {
-		if g.BuiltIn && !reflect.DeepEqual(state.Members[gid], old.Members[gid]) {
+		if g.BuiltIn && !boolSetEqual(state.Members[gid], old.Members[gid]) {
 			return errors.New("built-in group membership is automatic")
+		}
+		if g.IsVault() && !boolSetEqual(state.Members[gid], old.Members[gid]) {
+			return errors.New("vault group membership cannot be changed with SQL")
+		}
+		if g.IsVault() && !boolSetEqual(state.GroupGrants[gid], old.GroupGrants[gid]) {
+			return errors.New("vault group grants cannot be changed with SQL")
 		}
 	}
 
 	return nil
+}
+
+func boolSetEqual(a, b map[string]bool) bool {
+	countA := 0
+	for k, v := range a {
+		if !v {
+			continue
+		}
+		countA++
+		if !b[k] {
+			return false
+		}
+	}
+	countB := 0
+	for _, v := range b {
+		if v {
+			countB++
+		}
+	}
+	return countA == countB
 }
 
 // sqlMutationDetail records the statements a mutation ran, so the access

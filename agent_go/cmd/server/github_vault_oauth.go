@@ -277,13 +277,34 @@ func startGitHubConnect(person, redirect, root, projectID string) (string, error
 }
 
 // handleGitHubOAuthCallback keeps GitHub's one-time code for the connection the state names and sends the browser
-// back into the app, which completes it signed in. It stores no token.
+// back into the app with a fresh completion nonce (never the authorize state), which completes it signed in. It stores no token.
 func (api *StreamingAPI) handleGitHubOAuthCallback(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 	state := r.URL.Query().Get("state")
+	if !verifyOAuthCallbackBrowser(r, state) {
+		githubPending.Lock()
+		delete(githubPending.m, state)
+		githubPending.Unlock()
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>GitHub</title></head><body style="font-family: sans-serif; text-align: center; padding: 48px;"><h1>Sign-in started in another browser</h1><p>Start again with Connect GitHub in the same browser.</p></body></html>`)
+		return
+	}
+	nonceBytes := make([]byte, 24)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>GitHub</title></head><body style="font-family: sans-serif; text-align: center; padding: 48px;"><h1>Sign-in could not finish</h1><p>Start again with Connect GitHub in your Vault.</p></body></html>`)
+		return
+	}
+	completionNonce := githubStatePrefix + "ret_" + hex.EncodeToString(nonceBytes)
 	githubPending.Lock()
 	pending := githubPending.m[state]
+	delete(githubPending.m, state)
 	if pending != nil && (time.Since(pending.created) > githubConnectTTL || pending.code != "" || pending.providerError != "") {
-		delete(githubPending.m, state)
 		pending = nil
 	}
 	if pending != nil {
@@ -292,6 +313,7 @@ func (api *StreamingAPI) handleGitHubOAuthCallback(w http.ResponseWriter, r *htt
 		if pending.code == "" && pending.providerError == "" {
 			pending.providerError = "no_code"
 		}
+		githubPending.m[completionNonce] = pending
 	}
 	githubPending.Unlock()
 	if pending == nil {
@@ -300,7 +322,7 @@ func (api *StreamingAPI) handleGitHubOAuthCallback(w http.ResponseWriter, r *htt
 		fmt.Fprint(w, `<!DOCTYPE html><html><head><title>GitHub</title></head><body style="font-family: sans-serif; text-align: center; padding: 48px;"><h1>This GitHub link has expired</h1><p>Start again with Connect GitHub in your Vault.</p></body></html>`)
 		return
 	}
-	http.Redirect(w, r, "/?"+githubCompleteParm+"="+url.QueryEscape(state), http.StatusFound)
+	http.Redirect(w, r, "/?"+githubCompleteParm+"="+url.QueryEscape(completionNonce), http.StatusFound)
 }
 
 // completeGitHubConnect finishes a connection for the signed-in person. Only the person who started it may finish
@@ -317,14 +339,16 @@ func (api *StreamingAPI) completeGitHubConnect(ctx context.Context, person, stat
 		return nil, errors.New("This GitHub connection has expired. Start again with Connect GitHub.")
 	}
 	if pending.person != person {
-		// The rightful person can still finish it.
+		// Discard the held code immediately so a victim's authorization code
+		// can never be redeemed after a cross-user mismatch.
+		delete(githubPending.m, state)
 		githubPending.Unlock()
 		name := pending.person
 		if claims := userClaimsForDirectoryID(pending.person); claims != nil && claims.Username != "" {
 			name = claims.Username
 		}
 		log.Printf("[GITHUB_VAULT] completion refused: signed-in person=%s is not the person who started it", person)
-		return nil, fmt.Errorf("This GitHub connection was started by %s. Sign in as %s and try again.", name, name)
+		return nil, fmt.Errorf("This GitHub connection was started by %s. Sign in as %s and start again.", name, name)
 	}
 	if pending.code == "" && pending.providerError == "" {
 		githubPending.Unlock()
@@ -584,6 +608,11 @@ func (api *StreamingAPI) handleGitHubVault(w http.ResponseWriter, r *http.Reques
 		if err != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, err.Error())
 			return
+		}
+		if rawURL, _ := result["auth_url"].(string); rawURL != "" {
+			if st := oauthURLStateParam(rawURL); st != "" {
+				bindOAuthStartBrowser(w, r, st)
+			}
 		}
 		publishCrewPanelForPerson(person)
 		writeAgentProfileJSON(w, http.StatusOK, result)

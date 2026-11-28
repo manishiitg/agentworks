@@ -83,6 +83,7 @@ func TestOAuthCallbackHandsGmailSignInToGmail(t *testing.T) {
 	restore := services.SetGogClientStore(services.StoreGogClientForTest)
 	t.Cleanup(restore)
 	api, _ := newCodePrivacyFixture(t)
+	t.Setenv("MULTI_USER_MODE", "false")
 	api.logger = loggerv2.NewNoop()
 	if _, err := services.EnsurePlatformOAuthClient(context.Background(), "cid.apps.googleusercontent.com", "shh"); err != nil {
 		t.Fatal(err)
@@ -122,10 +123,16 @@ func TestOAuthCallbackHandsGmailSignInToGmail(t *testing.T) {
 	t.Cleanup(func() { oauthReturns.Lock(); delete(oauthReturns.m, state); oauthReturns.Unlock() })
 	rec = httptest.NewRecorder()
 	api.handleOAuthCallback(rec, googleAppRequest(http.MethodGet, "/api/oauth/callback?state="+state+"&code=x", "", "bob"))
-	if rec.Code != http.StatusFound || !strings.Contains(rec.Header().Get("Location"), oauthReturnParam+"=") {
-		t.Fatalf("a Google sign-in on a multi-person server finished at the callback: %d", rec.Code)
+	loc := rec.Header().Get("Location")
+	if rec.Code != http.StatusFound || !strings.Contains(loc, oauthReturnParam+"=") || strings.Contains(loc, state) {
+		t.Fatalf("a Google sign-in on a multi-person server did not mint a fresh completion nonce: %d %q", rec.Code, loc)
 	}
-	if _, err := takeOAuthReturn(state, "bob"); err == nil {
+	nonce := loc[strings.Index(loc, oauthReturnParam+"=")+len(oauthReturnParam+"="):]
+	t.Cleanup(func() { oauthReturns.Lock(); delete(oauthReturns.m, nonce); oauthReturns.Unlock() })
+	if _, err := takeOAuthReturn(nonce, "bob"); err == nil {
 		t.Fatal("a teammate could finish another person's Google sign-in")
+	}
+	if _, err := takeOAuthReturn(nonce, "alice"); err == nil {
+		t.Fatal("held code was not discarded after cross-user mismatch")
 	}
 }

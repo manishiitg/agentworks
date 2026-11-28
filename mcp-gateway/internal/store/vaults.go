@@ -209,13 +209,16 @@ func (s *MemoryStore) VaultRemoveSecret(actor, vaultID, name string) error {
 // supplies the owner after its native project access checks; Run users are lent
 // the selected secrets through the existing owner execution identity.
 func (s *MemoryStore) EnsureProjectVault(workspace, owner, id, root, name string) error {
+	if strings.HasPrefix(root, CrewVaultRootPrefix) {
+		return errors.New("crew vault root requires EnsureCrewVault")
+	}
 	s.mu.Lock()
 	defer s.persistUnlock()
 	if u, ok := s.users[owner]; !ok || u.WorkspaceID != workspace {
 		return errors.New("unknown project owner")
 	}
 	g, exists := s.groups[id]
-	if exists && (g.WorkspaceID != workspace || g.ProjectRoot != root) {
+	if exists && (g.WorkspaceID != workspace || g.ProjectRoot != root || strings.HasPrefix(g.ProjectRoot, CrewVaultRootPrefix)) {
 		return errors.New("project vault identity mismatch")
 	}
 	if exists && g.HasOwner(owner) && len(g.Owners) == 1 {

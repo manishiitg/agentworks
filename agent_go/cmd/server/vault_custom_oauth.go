@@ -60,9 +60,11 @@ func customVaultOAuthTemplate(ctx context.Context, id, upstreamURL string) (mcpc
 			AuthURL: probe.Endpoints.AuthURL, TokenURL: probe.Endpoints.TokenURL,
 			RegistrationEndpoint: probe.Endpoints.RegistrationEndpoint, Resource: resource,
 			Scopes: probe.Endpoints.ScopesSupported, UsePKCE: true, PublicOnly: true,
+			ExtraAuthParams: defaultOAuthExtraParams(probe.Endpoints.AuthURL, nil),
 		}
 		customVaultOAuthEndpoints.Store(key, discovered)
 	}
+	discovered.ExtraAuthParams = defaultOAuthExtraParams(discovered.AuthURL, discovered.ExtraAuthParams)
 	discovered.TokenFile = getUserTokenFilePath(platformMCPTokenUserID, vaultCredentialName(id))
 	return mcpclient.MCPServerConfig{URL: upstreamURL, OAuth: &discovered}, nil
 }

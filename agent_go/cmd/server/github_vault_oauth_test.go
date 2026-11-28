@@ -98,6 +98,50 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 		return personalRoute(api, (*StreamingAPI).handleGitHubVault, method, path+"?workspace_path=Crew/github-"+user, body, user, nil)
 	}
 
+	// A callback arriving from a different browser (missing the start binding cookie) is rejected immediately.
+	wrongBrowserStart := call(http.MethodPost, "/api/vault/github/connect", `{"method":"oauth"}`, "alice")
+	var wrongStart struct {
+		AuthURL string `json:"auth_url"`
+	}
+	if wrongBrowserStart.Code != http.StatusOK || json.Unmarshal(wrongBrowserStart.Body.Bytes(), &wrongStart) != nil {
+		t.Fatalf("connect = %d %s", wrongBrowserStart.Code, wrongBrowserStart.Body.String())
+	}
+	wrongLink, _ := url.Parse(wrongStart.AuthURL)
+	wrongBack := httptest.NewRecorder()
+	api.handleOAuthCallback(wrongBack, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state="+wrongLink.Query().Get("state")+"&code=victim-code", nil))
+	if wrongBack.Code != http.StatusForbidden {
+		t.Fatalf("cross-browser callback was not rejected: %d", wrongBack.Code)
+	}
+
+	// Flow where colleague hits /complete: fresh completion nonce is distinct from state, and mismatch discards the code.
+	mismatchStart := call(http.MethodPost, "/api/vault/github/connect", `{"method":"oauth"}`, "alice")
+	var mmStart struct {
+		AuthURL string `json:"auth_url"`
+	}
+	if mismatchStart.Code != http.StatusOK || json.Unmarshal(mismatchStart.Body.Bytes(), &mmStart) != nil {
+		t.Fatalf("connect = %d %s", mismatchStart.Code, mismatchStart.Body.String())
+	}
+	mmLink, _ := url.Parse(mmStart.AuthURL)
+	mmState := mmLink.Query().Get("state")
+	mmReq := httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state="+mmState+"&code=colleague-code", nil)
+	for _, c := range mismatchStart.Result().Cookies() {
+		mmReq.AddCookie(c)
+	}
+	mmBack := httptest.NewRecorder()
+	api.handleOAuthCallback(mmBack, mmReq)
+	mmLoc, _ := url.Parse(mmBack.Header().Get("Location"))
+	mmNonce := mmLoc.Query().Get(githubCompleteParm)
+	if mmBack.Code != http.StatusFound || mmNonce == "" || mmNonce == mmState {
+		t.Fatalf("callback did not mint fresh completion nonce: %d %s", mmBack.Code, mmBack.Header().Get("Location"))
+	}
+	if other := call(http.MethodPost, "/api/vault/github/complete", `{"state":"`+mmNonce+`"}`, "bob"); other.Code != http.StatusForbidden || !strings.Contains(other.Body.String(), "Sign in as alice") || len(stored) != 0 {
+		t.Fatalf("a colleague finished someone else's connection: %d %s %v", other.Code, other.Body.String(), stored)
+	}
+	if stolen := call(http.MethodPost, "/api/vault/github/complete", `{"state":"`+mmNonce+`"}`, "alice"); stolen.Code != http.StatusForbidden || len(stored) != 0 {
+		t.Fatalf("victim code survived cross-user mismatch: %d %s", stolen.Code, stolen.Body.String())
+	}
+
+	// Legitimate same-browser, same-user flow succeeds.
 	started := call(http.MethodPost, "/api/vault/github/connect", `{"method":"oauth"}`, "alice")
 	var start struct {
 		AuthURL string `json:"auth_url"`
@@ -110,21 +154,27 @@ func TestGitHubVaultConnectBelongsToTheStarterAndNeverLogsCredentials(t *testing
 	if link.Query().Get("scope") != githubOAuthScopes || link.Query().Get("redirect_uri") != "https://agents.example.com/api/oauth/callback" || state == "" {
 		t.Fatalf("authorize link = %s", start.AuthURL)
 	}
+	backReq := httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state="+state+"&code="+code, nil)
+	for _, c := range started.Result().Cookies() {
+		backReq.AddCookie(c)
+	}
 	back := httptest.NewRecorder()
-	api.handleOAuthCallback(back, httptest.NewRequest(http.MethodGet, "/api/oauth/callback?state="+state+"&code="+code, nil))
-	if back.Code != http.StatusFound || back.Header().Get("Location") != "/?github_connect="+state {
+	api.handleOAuthCallback(back, backReq)
+	backLoc, _ := url.Parse(back.Header().Get("Location"))
+	nonce := backLoc.Query().Get(githubCompleteParm)
+	if back.Code != http.StatusFound || nonce == "" || nonce == state {
 		t.Fatalf("callback = %d %s", back.Code, back.Header().Get("Location"))
 	}
-	complete := func(user string) *httptest.ResponseRecorder {
-		return call(http.MethodPost, "/api/vault/github/complete", `{"state":"`+state+`"}`, user)
+	complete := func(user, tok string) *httptest.ResponseRecorder {
+		return call(http.MethodPost, "/api/vault/github/complete", `{"state":"`+tok+`"}`, user)
 	}
-	if other := complete("bob"); other.Code != http.StatusForbidden || !strings.Contains(other.Body.String(), "Sign in as alice") || len(stored) != 0 {
-		t.Fatalf("a colleague finished someone else's connection: %d %s %v", other.Code, other.Body.String(), stored)
+	if rawTry := complete("alice", state); rawTry.Code != http.StatusForbidden {
+		t.Fatalf("raw state was accepted at complete: %d", rawTry.Code)
 	}
-	if done := complete("alice"); done.Code != http.StatusOK || !strings.Contains(done.Body.String(), "alice-gh") || stored["alice"] != token {
+	if done := complete("alice", nonce); done.Code != http.StatusOK || !strings.Contains(done.Body.String(), "alice-gh") || stored["alice"] != token {
 		t.Fatalf("completion = %d %s", done.Code, done.Body.String())
 	}
-	if again := complete("alice"); again.Code != http.StatusForbidden {
+	if again := complete("alice", nonce); again.Code != http.StatusForbidden {
 		t.Fatalf("a connection finished twice: %d", again.Code)
 	}
 	// One app serves every organisation: the reply says where the account works and which orgs still need an owner's

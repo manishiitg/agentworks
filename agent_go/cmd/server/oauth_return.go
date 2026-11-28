@@ -2,6 +2,9 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,19 +20,21 @@ import (
 // A provider's sign-in page can be finished in anyone's browser. On a server with several people, a sign-in link
 // started by one person and finished by another would put the second person's account (their Slack, their Google
 // mailbox) into the first person's connection. So on such a server the provider's return only keeps the one-time
-// code and sends the browser into the app, which finishes the sign-in signed in, and only for the person who started
-// it. This is the GitHub connection's rule (github_vault_oauth.go), shared by MCP app and Google sign-ins.
-// A single-person installation finishes at the callback as before.
+// code under a fresh random completion nonce (never reusing the authorize state) and sends the browser into the app,
+// which finishes the sign-in signed in, and only for the person who started it. Browser-initiated starts also bind
+// an HttpOnly SameSite=Lax cookie checked at the callback. A single-person installation finishes at the callback.
 
 const (
-	oauthReturnParam = "oauth_connect"
-	oauthReturnTTL   = 15 * time.Minute
+	oauthReturnParam    = "oauth_connect"
+	oauthReturnTTL      = 15 * time.Minute
+	oauthBindCookieName = "aw_oauth_bind"
 
 	oauthReturnMCP   = "mcp"
 	oauthReturnGmail = "gmail"
 )
 
 type oauthReturn struct {
+	state   string
 	person  string
 	kind    string
 	code    string
@@ -40,6 +45,98 @@ var oauthReturns = struct {
 	sync.Mutex
 	m map[string]*oauthReturn
 }{m: make(map[string]*oauthReturn)}
+
+type oauthBrowserBinding struct {
+	nonce   string
+	created time.Time
+}
+
+var oauthBrowserBindings = struct {
+	sync.Mutex
+	m map[string]oauthBrowserBinding
+}{m: make(map[string]oauthBrowserBinding)}
+
+func oauthURLStateParam(rawURL string) string {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(u.Query().Get("state"))
+}
+
+func isHTTPSRequest(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		return strings.EqualFold(strings.TrimSpace(strings.Split(proto, ",")[0]), "https")
+	}
+	return false
+}
+
+// bindOAuthStartBrowser ties a browser-initiated OAuth state to an HttpOnly
+// SameSite=Lax cookie so a callback arriving in a different browser is rejected
+// before holding or exchanging any authorization code.
+func bindOAuthStartBrowser(w http.ResponseWriter, r *http.Request, state string) {
+	if w == nil || r == nil || strings.TrimSpace(state) == "" {
+		return
+	}
+	nonce := ""
+	if existing, err := r.Cookie(oauthBindCookieName); err == nil && len(existing.Value) >= 32 && len(existing.Value) <= 128 {
+		nonce = existing.Value
+	}
+	if nonce == "" {
+		buf := make([]byte, 24)
+		if _, err := rand.Read(buf); err != nil {
+			return
+		}
+		nonce = hex.EncodeToString(buf)
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     oauthBindCookieName,
+		Value:    nonce,
+		Path:     "/api/",
+		MaxAge:   int(oauthReturnTTL.Seconds()),
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   isHTTPSRequest(r),
+	})
+	oauthBrowserBindings.Lock()
+	for k, b := range oauthBrowserBindings.m {
+		if time.Since(b.created) > oauthReturnTTL {
+			delete(oauthBrowserBindings.m, k)
+		}
+	}
+	oauthBrowserBindings.m[state] = oauthBrowserBinding{nonce: nonce, created: time.Now()}
+	oauthBrowserBindings.Unlock()
+}
+
+// verifyOAuthCallbackBrowser enforces the browser-binding cookie for flows that
+// were started from an HTTP browser endpoint. Headless (chat-tool) starts have
+// no binding entry and rely on the fresh completion nonce + user check.
+func verifyOAuthCallbackBrowser(r *http.Request, state string) bool {
+	oauthBrowserBindings.Lock()
+	binding, bound := oauthBrowserBindings.m[state]
+	delete(oauthBrowserBindings.m, state)
+	oauthBrowserBindings.Unlock()
+	if !bound {
+		return true
+	}
+	if time.Since(binding.created) > oauthReturnTTL {
+		return false
+	}
+	if r == nil {
+		return false
+	}
+	cookie, err := r.Cookie(oauthBindCookieName)
+	if err != nil || cookie.Value == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(binding.nonce)) == 1
+}
 
 func oauthReturnPerson(person string) string {
 	person = strings.TrimSpace(person)
@@ -54,48 +151,59 @@ func oauthReturnBound(person string) bool {
 	return IsMultiUserMode() && oauthReturnPerson(person) != ""
 }
 
-// holdOAuthReturn keeps the provider's code for the sign-in state names and sends the browser into the app.
+// holdOAuthReturn keeps the provider's code under a fresh random completion nonce
+// (never reusing state, which the starter already knows) and sends the browser into the app.
 func holdOAuthReturn(w http.ResponseWriter, r *http.Request, state, person, kind, code string) {
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	nonceBuf := make([]byte, 24)
+	if _, err := rand.Read(nonceBuf); err != nil {
+		writeOAuthPage(w, http.StatusInternalServerError, "Sign-in could not finish", "Start the sign-in again.")
+		return
+	}
+	completionNonce := "ret_" + hex.EncodeToString(nonceBuf)
 	oauthReturns.Lock()
 	for key, held := range oauthReturns.m {
 		if time.Since(held.created) > oauthReturnTTL {
 			delete(oauthReturns.m, key)
+			continue
+		}
+		if held.state == state {
+			oauthReturns.Unlock()
+			writeOAuthPage(w, http.StatusConflict, "Sign-in already received", "Return to AgentWorks to finish it.")
+			return
 		}
 	}
-	if _, already := oauthReturns.m[state]; already {
-		oauthReturns.Unlock()
-		writeOAuthPage(w, http.StatusConflict, "Sign-in already received", "Return to AgentWorks to finish it.")
-		return
-	}
-	oauthReturns.m[state] = &oauthReturn{person: oauthReturnPerson(person), kind: kind, code: code, created: time.Now()}
+	oauthReturns.m[completionNonce] = &oauthReturn{state: state, person: oauthReturnPerson(person), kind: kind, code: code, created: time.Now()}
 	oauthReturns.Unlock()
 	log.Printf("[OAUTH_RETURN] kind=%s event=held", kind)
-	http.Redirect(w, r, "/?"+oauthReturnParam+"="+url.QueryEscape(state), http.StatusFound)
+	http.Redirect(w, r, "/?"+oauthReturnParam+"="+url.QueryEscape(completionNonce), http.StatusFound)
 }
 
-// takeOAuthReturn hands the held code to the person who started the sign-in. Anyone else is refused and the code
-// stays for the rightful person.
-func takeOAuthReturn(state, person string) (*oauthReturn, error) {
+// takeOAuthReturn hands the held code to the person who started the sign-in.
+// Any mismatch immediately discards the held authorization code so a victim's
+// code can never be redeemed afterwards.
+func takeOAuthReturn(token, person string) (*oauthReturn, error) {
 	person = oauthReturnPerson(person)
 	oauthReturns.Lock()
 	defer oauthReturns.Unlock()
-	held := oauthReturns.m[state]
+	held := oauthReturns.m[token]
 	if held != nil && time.Since(held.created) > oauthReturnTTL {
-		delete(oauthReturns.m, state)
+		delete(oauthReturns.m, token)
 		held = nil
 	}
 	if held == nil {
 		return nil, errors.New("This sign-in has expired or was already finished. Start it again.")
 	}
+	delete(oauthReturns.m, token)
 	if person == "" || held.person != person {
 		name := held.person
 		if claims := userClaimsForDirectoryID(held.person); claims != nil && claims.Username != "" {
 			name = claims.Username
 		}
 		log.Printf("[OAUTH_RETURN] kind=%s event=refused reason=other_person", held.kind)
-		return nil, fmt.Errorf("This sign-in was started by %s. Sign in to AgentWorks as %s in this browser and open the link again.", name, name)
+		return nil, fmt.Errorf("This sign-in was started by %s. Sign in to AgentWorks as %s in this browser and start it again.", name, name)
 	}
-	delete(oauthReturns.m, state)
 	return held, nil
 }
 
@@ -121,7 +229,7 @@ func (api *StreamingAPI) handleOAuthReturnComplete(w http.ResponseWriter, r *htt
 	}
 	switch held.kind {
 	case oauthReturnGmail:
-		email, err := api.finishGmailOAuth(r.Context(), body.State, held.code)
+		email, err := api.finishGmailOAuth(r.Context(), r, held.state, held.code)
 		if err != nil {
 			writeAgentProfileError(w, http.StatusBadRequest, "Google sign-in could not finish: "+err.Error())
 			return
@@ -133,7 +241,7 @@ func (api *StreamingAPI) handleOAuthReturnComplete(w http.ResponseWriter, r *htt
 		writeAgentProfileJSON(w, http.StatusOK, map[string]any{"connected": true, "message": message})
 	default:
 		oauthFlowsMu.RLock()
-		flow := oauthFlows[body.State]
+		flow := oauthFlows[held.state]
 		oauthFlowsMu.RUnlock()
 		if flow == nil {
 			writeAgentProfileError(w, http.StatusGone, "This sign-in took too long and expired. Start it again.")
@@ -186,6 +294,8 @@ func deliverOAuthFlowCode(ctx context.Context, flow *OAuthFlowState, code string
 // both are escaped, and the page runs no script.
 func writeOAuthPage(w http.ResponseWriter, status int, title, detail string) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
