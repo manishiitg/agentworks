@@ -85,6 +85,8 @@ type projectOwnerRecord struct {
 	// AddedBots are other projects' bots added to this project (by bot id): they show in its agent list and right
 	// menu, and its agents can ask them. Each person's own access to a bot is still checked when they use it.
 	AddedBots []string `json:"added_bots,omitempty"`
+	// BotsServer is, for a project on a Mac, the saved sign-in (connection id) its AddedBots come from.
+	BotsServer string `json:"bots_server,omitempty"`
 	// CoOwners build a server Crew with its main owner (OwnerID, the creator, who never changes and whose server account
 	// every turn runs in). Server-controlled like the rest of the record; only the main owner changes it (crew_owners.go).
 	CoOwners []string `json:"co_owners,omitempty"`

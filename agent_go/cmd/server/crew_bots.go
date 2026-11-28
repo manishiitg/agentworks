@@ -585,12 +585,15 @@ func (api *StreamingAPI) crewBotCall(w http.ResponseWriter, r *http.Request, cal
 // GET  /api/bots/agent?workspace=&agent=  the maker's card for one agent
 // PUT  /api/bots/agent                    save the maker's change
 // POST /api/bots/call                     run one of a bot's buttons
+// POST /api/bots/ask                      ask a bot (a Mac project's agents, through the Mac's sign-in)
+// GET  /api/bots/read?inbox_id=           read the bot's answer to an ask
 // GET  /api/bots/project?project_id=      the bots added to a project
 // POST /api/bots/project                  add a bot to my project, or take it out
 func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	if IsLocalMode() && !IsMultiUserMode() {
-		externalError(w, 404, "server_only", "Bots are shared from projects on the server.")
+		// On a Mac, bots come from the server it is signed in to; a project on this Mac can add them (crew_bots_mac.go).
+		api.handleMacProjectBots(w, r)
 		return
 	}
 	claims := GetUserFromContext(r.Context())
@@ -601,6 +604,22 @@ func (api *StreamingAPI) handleCrewBots(w http.ResponseWriter, r *http.Request) 
 	caller := sanitizeUserIDForPath(claims.UserID)
 	path := strings.TrimSuffix(r.URL.Path, "/")
 	switch {
+	case r.Method == http.MethodPost && strings.HasSuffix(path, "/bots/ask"):
+		var body struct {
+			Bot          string `json:"bot"`
+			Message      string `json:"message"`
+			InboxID      string `json:"inbox_id"`
+			SubmissionID string `json:"submission_id"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 256<<10))
+		decoder.DisallowUnknownFields()
+		if decoder.Decode(&body) != nil || decoder.Decode(new(any)) != io.EOF {
+			externalError(w, 400, "invalid_arguments", "invalid bot ask")
+			return
+		}
+		api.externalBotsCall(w, r, map[string]any{"action": "ask", "bot": body.Bot, "message": body.Message, "inbox_id": body.InboxID, "submission_id": body.SubmissionID})
+	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots/read"):
+		api.externalBotsCall(w, r, map[string]any{"action": "read", "inbox_id": r.URL.Query().Get("inbox_id")})
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots"):
 		externalJSON(w, map[string]any{"bots": crewBotsFor(r.Context(), caller), "add_targets": crewBotAddTargets(caller)})
 	case r.Method == http.MethodGet && strings.HasSuffix(path, "/bots/project"):
@@ -680,11 +699,11 @@ const externalBotsTool = "bots"
 
 func externalBotsDefinition(add func(string, string, bool, bool, map[string]any, ...string)) {
 	strList := map[string]any{"type": "array", "items": map[string]any{"type": "string"}}
-	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and buttons; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read its answer with messages action=read and the inbox_id. call (bot, function, input): press one of its buttons, a project function; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions shown as its buttons. add / remove (crew_id, bot): put a bot shared with you into one of your projects on the server (owner or co-owner), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
-		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "call", "get", "set", "add", "remove"}},
+	add(externalBotsTool, "Bots: agents of projects on the server that their makers share for others to use without joining the project. list: the bots shared with you and your own (each with its id, icon, name, purpose, project and buttons; ask is always one). ask (bot, message, optional inbox_id): ask a bot; read (inbox_id) returns its answer (the same as messages action=read). call (bot, function, input): press one of its buttons, a project function; read the result with functions action=status. Makers: get (crew_id, agent) shows whether one of your agents in that project is a bot and what can be chosen; set (crew_id, agent, on, and any of icon, name, purpose, everyone, people, teams, functions) makes it a bot, changes it or stops it (on=false). Only the person who made the agent (the project's owner or a co-owner) sets it. everyone=true shares it with anyone at the company; otherwise people (user ids) and teams (team_id from get's team_choices). functions are the project's functions shown as its buttons. add / remove (crew_id, bot): put a bot shared with you into one of your projects (on the server: its owner or a co-owner; or a project on your Mac, from the server it is signed in to), or take it out; it then shows in that project's agent list and right menu, and the project's agents ask it with ask. list with crew_id also returns project_bots, the bots added to that project. A bot is not co-owners or Users (people who work in the project: crew_owners) and not the dashboard (shared by its link).", true, false, map[string]any{
+		"action":        map[string]any{"type": "string", "enum": []any{"list", "ask", "read", "call", "get", "set", "add", "remove"}},
 		"bot":           externalString("ask, call, add, remove: the bot's id from list."),
 		"message":       externalString("ask: your message."),
-		"inbox_id":      externalString("ask: the inbox from an earlier ask, to continue it."),
+		"inbox_id":      externalString("ask: the inbox from an earlier ask, to continue it. read: the inbox ask returned."),
 		"function":      externalString("call: the button's name from list."),
 		"input":         map[string]any{"type": "object", "description": "call: the function's input."},
 		"submission_id": externalString("ask, call: optional retry key."),
@@ -775,6 +794,13 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 			}
 		}
 		api.externalCrewCall(w, r, "ask_crew", call)
+	case "read":
+		// The bot's answer to an ask, from the inbox the ask returned (the same as messages action=read).
+		if str("inbox_id") == "" {
+			externalError(w, 400, "invalid_arguments", "read needs the inbox_id from ask.")
+			return
+		}
+		api.externalAgentMessages(w, r, map[string]any{"action": "read", "inbox_id": str("inbox_id")})
 	case "call":
 		if token != nil && !token.Allows("crews:run") {
 			externalError(w, 403, "insufficient_scope", "Pressing a bot's button needs a connection that may run projects.")
@@ -832,7 +858,7 @@ func (api *StreamingAPI) externalBotsCall(w http.ResponseWriter, r *http.Request
 		}
 		externalJSON(w, state)
 	default:
-		externalError(w, 400, "invalid_arguments", "action must be list, ask, call, get, set, add or remove.")
+		externalError(w, 400, "invalid_arguments", "action must be list, ask, read, call, get, set, add or remove.")
 	}
 }
 
@@ -843,6 +869,10 @@ func (api *StreamingAPI) registerCrewBotsChatTool(reg definitionToolRegistrar, g
 		return nil
 	}
 	rec, ok := crewOwnerRecordAt(root)
+	if ok && IsLocalMode() && !IsMultiUserMode() && rec.ProjectID != "" {
+		// A project on this Mac uses the bots of the server it is signed in to.
+		return api.registerMacProjectBotsTool(reg, gate, claims, rec.ProjectID)
+	}
 	if !ok || !crewLivesOnServer(rec.ProjectID) {
 		return nil
 	}
