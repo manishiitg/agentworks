@@ -5,6 +5,7 @@ import (
 	agentevents "github.com/manishiitg/mcpagent/events"
 	"github.com/manishiitg/multi-llm-provider-go/llmtypes"
 	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/cursorcli"
+	"github.com/manishiitg/multi-llm-provider-go/pkg/adapters/musecli"
 	"log"
 	"path/filepath"
 	"sort"
@@ -12,15 +13,18 @@ import (
 	"time"
 )
 
-func (api *StreamingAPI) wireCursorSubagentRows() {
-	cursorcli.SetSDKHelperListener(api.observeCursorSubagentRow)
+// wireNativeSubagentRows: the helpers a chat's Cursor (Task call) or Muse (`muse serve` subagent item) starts
+// become helper rows in that chat.
+func (api *StreamingAPI) wireNativeSubagentRows() {
+	cursorcli.SetSDKHelperListener(api.observeNativeSubagentRow)
+	musecli.SetMSPHelperListener(api.observeNativeSubagentRow)
 }
 
-func (api *StreamingAPI) observeCursorSubagentRow(owner string, record llmtypes.NativeRecord) {
+func (api *StreamingAPI) observeNativeSubagentRow(owner string, record llmtypes.NativeRecord) {
 	if api == nil || api.eventStore == nil || owner == "" || !api.eventStore.IsDurableChatSession(owner) {
 		return
 	}
-	if record.Provider != "cursor-cli" || record.Kind != "helper" || record.TaskID == "" || record.SessionID == "" {
+	if (record.Provider != "cursor-cli" && record.Provider != "muse-cli") || record.Kind != "helper" || record.TaskID == "" || record.SessionID == "" {
 		return
 	}
 	record.Text, record.Output = "", ""
@@ -28,7 +32,7 @@ func (api *StreamingAPI) observeCursorSubagentRow(owner string, record llmtypes.
 	activity.SessionID = owner
 	api.observeTurnInactivity(owner, storeevents.Event{Type: string(agentevents.CodingAgentNativeActivity), SessionID: owner, Timestamp: time.Now(), ExecutionKind: "main_agent", Data: activity})
 	if err := api.saveNativeCodingActivity(owner, record); err != nil {
-		log.Printf("[SUBAGENT_ROW] provider=cursor-cli session=%s task=%q state=%s action=failed reason=durable_accept_failed", owner, record.TaskID, record.State)
+		log.Printf("[SUBAGENT_ROW] provider=%s session=%s task=%q state=%s action=failed reason=durable_accept_failed", record.Provider, owner, record.TaskID, record.State)
 	}
 }
 
